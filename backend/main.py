@@ -7,6 +7,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from dateutil.relativedelta import relativedelta
 import httpx
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, rely on system env vars
+
 app = FastAPI(title="QuantumTrace API", version="1.0")
 
 # Allow CORS for local dev and production
@@ -46,7 +52,16 @@ async def analyze_address(address: str):
             tx_url = f"https://api.etherscan.io/api?module=account&action=txlist&address={address}&sort=asc&apikey={ETHERSCAN_API_KEY}"
             tx_response = await client.get(tx_url)
             tx_data = tx_response.json()
-            
+
+            # Check if Etherscan returned an error
+            if tx_data.get("status") == "0" and not isinstance(tx_data.get("result"), list):
+                error_msg = tx_data.get("result", "Unknown Etherscan error")
+                if "Invalid API" in str(error_msg) or "Missing" in str(error_msg):
+                    raise HTTPException(status_code=502, detail="Etherscan API key is invalid or missing. Contact the site administrator.")
+                # "No transactions found" is status 0 but is a valid empty result
+                if "No transactions found" not in str(error_msg):
+                    raise HTTPException(status_code=502, detail=f"Etherscan error: {error_msg}")
+
             # Small delay to respect rate limit (Etherscan free tier is 5 calls/sec)
             await asyncio.sleep(0.2)
 
@@ -54,6 +69,10 @@ async def analyze_address(address: str):
             bal_url = f"https://api.etherscan.io/api?module=account&action=balance&address={address}&tag=latest&apikey={ETHERSCAN_API_KEY}"
             bal_response = await client.get(bal_url)
             bal_data = bal_response.json()
+
+            # Check if balance fetch failed
+            if bal_data.get("status") == "0" and "Invalid API" in str(bal_data.get("result", "")):
+                raise HTTPException(status_code=502, detail="Etherscan API key is invalid or missing. Contact the site administrator.")
 
             await asyncio.sleep(0.2)
             price_url = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd,inr"
