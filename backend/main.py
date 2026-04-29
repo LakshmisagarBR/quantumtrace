@@ -30,7 +30,7 @@ async def startup_check():
             RuntimeWarning
         )
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
     return {"status": "ok", "chain": "ethereum", "version": "1.0"}
 
