@@ -1,11 +1,21 @@
+# Environment files — NEVER commit these
+.env
+.env.local
+.env.production
+.env.development
+
+# Python
 __pycache__/
 *.pyc
-.env
+*.pyo
 .venv/
 venv/
-env/
+
+# Node
 node_modules/
 .next/
-build/
-dist/
-*.log
+out/
+
+# OS files
+.DS_Store
+Thumbs.db

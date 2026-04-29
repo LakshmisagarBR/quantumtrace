@@ -1,0 +1,47 @@
+[
+  {
+    "chain": "Bitcoin",
+    "ticker": "BTC",
+    "algorithm": "ECDSA (secp256k1)",
+    "migration_status": "BIP 360 debated — no timeline",
+    "status": "critical",
+    "progress_percent": 5,
+    "last_updated": "April 2026"
+  },
+  {
+    "chain": "Ethereum",
+    "ticker": "ETH",
+    "algorithm": "ECDSA + BLS",
+    "migration_status": "Strawmap active · 2030 target",
+    "status": "progress",
+    "progress_percent": 25,
+    "last_updated": "April 2026"
+  },
+  {
+    "chain": "Solana",
+    "ticker": "SOL",
+    "algorithm": "Ed25519",
+    "migration_status": "Dilithium testnet Dec 2025",
+    "status": "progress",
+    "progress_percent": 20,
+    "last_updated": "April 2026"
+  },
+  {
+    "chain": "XRP Ledger",
+    "ticker": "XRP",
+    "algorithm": "ECDSA / Ed25519",
+    "migration_status": "PQC roadmap · 2028 target",
+    "status": "progress",
+    "progress_percent": 30,
+    "last_updated": "April 2026"
+  },
+  {
+    "chain": "Algorand",
+    "ticker": "ALGO",
+    "algorithm": "Falcon-1024 (NIST)",
+    "migration_status": "Live on mainnet Nov 2025",
+    "status": "safe",
+    "progress_percent": 85,
+    "last_updated": "April 2026"
+  }
+]

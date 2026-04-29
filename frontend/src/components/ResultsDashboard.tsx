@@ -3,22 +3,91 @@
 import React from "react";
 
 export type ResultType = {
-  is_exposed: boolean;
   address: string;
-  exposure_duration: string;
-  exposure_date: string;
+  is_exposed: boolean;
+  exposure_date: string | null;
+  exposure_duration: string | null;
   outgoing_tx_count: number;
-  total_value_inr: number;
-  total_value_usd: number;
+  total_tx_count: number;
   eth_balance: number;
+  total_value_usd: number;
+  total_value_inr: number;
   risk_score: number;
   risk_level: string;
+  recommendation: string;
+  tokens: Array<{ symbol: string; balance: number }>;
 };
+
+type ChainEntry = {
+  chain: string;
+  ticker: string;
+  algorithm: string;
+  migration_status: string;
+  status: "critical" | "progress" | "safe";
+  progress_percent: number;
+  last_updated: string;
+};
+
+const CHAIN_DATA: ChainEntry[] = [
+  { chain: "Bitcoin", ticker: "BTC", algorithm: "ECDSA (secp256k1)", migration_status: "BIP 360 debated — no timeline", status: "critical", progress_percent: 5, last_updated: "April 2026" },
+  { chain: "Ethereum", ticker: "ETH", algorithm: "ECDSA + BLS", migration_status: "Strawmap active · 2030 target", status: "progress", progress_percent: 25, last_updated: "April 2026" },
+  { chain: "Solana", ticker: "SOL", algorithm: "Ed25519", migration_status: "Dilithium testnet Dec 2025", status: "progress", progress_percent: 20, last_updated: "April 2026" },
+  { chain: "XRP Ledger", ticker: "XRP", algorithm: "ECDSA / Ed25519", migration_status: "PQC roadmap · 2028 target", status: "progress", progress_percent: 30, last_updated: "April 2026" },
+  { chain: "Algorand", ticker: "ALGO", algorithm: "Falcon-1024 (NIST)", migration_status: "Live on mainnet Nov 2025", status: "safe", progress_percent: 85, last_updated: "April 2026" },
+];
 
 export function ResultsDashboard({ result }: { result: ResultType | null }) {
   if (!result) return null;
 
   const isExposed = result.is_exposed;
+
+  // Migration steps
+  const exposedSteps = [
+    {
+      num: "01",
+      title: "Create a fresh Ethereum wallet immediately",
+      desc: "Generate a brand new wallet address that has never sent any transaction. Its public key will remain hidden until it transacts. Never reuse an address that has previously signed a transaction on-chain.",
+      link: "→ HOW TO CREATE A SECURE WALLET",
+      href: "#",
+      tag: "DO NOW",
+      tagClass: "text-destructive border-destructive/40 bg-destructive/10",
+    },
+    {
+      num: "02",
+      title: "Migrate your assets to the fresh wallet",
+      desc: `Send all ETH and tokens from your exposed wallet to the new address. Note: this transaction will expose the new wallet's key too — but your exposure clock resets to today, not ${result.exposure_date}.`,
+      link: "→ MIGRATION CHECKLIST",
+      href: "#",
+      tag: "DO NOW",
+      tagClass: "text-destructive border-destructive/40 bg-destructive/10",
+    },
+    {
+      num: "03",
+      title: "Monitor Ethereum's EIP-8141 rollout",
+      desc: "Ethereum's Hegotá upgrade (late 2026) introduces native quantum-resistant signature support. Once live, wallets can adopt post-quantum signatures without changing addresses. This is the permanent protocol-level fix.",
+      link: "→ ETHEREUM STRAWMAP",
+      href: "https://strawmap.org",
+      target: "_blank",
+      tag: "WATCH 2026",
+      tagClass: "text-warning border-warning/40 bg-warning/10",
+    },
+    {
+      num: "04",
+      title: "Consider quantum-safe chains for long-term holdings",
+      desc: "For assets held beyond 2029, consider chains already running NIST-approved quantum-safe cryptography: Algorand (Falcon-1024 on mainnet since November 2025) or QANplatform (ML-DSA signatures, mainnet mid-2026).",
+      link: "→ QUANTUM-SAFE CHAIN COMPARISON",
+      href: "#",
+      tag: "LONG-TERM",
+      tagClass: "text-safe border-safe/40 bg-safe/10",
+    },
+  ];
+
+  const safeSteps = [
+    { ...exposedSteps[2], num: "01" },
+    { ...exposedSteps[3], num: "02" },
+  ];
+
+  const migrationSteps = isExposed ? exposedSteps : safeSteps;
 
   return (
     <div className="w-full flex flex-col gap-8 pb-[100px] animate-in fade-in slide-in-from-bottom-8 duration-700">
@@ -61,7 +130,7 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
         />
         <Card
           title="EXPOSURE DURATION"
-          value={isExposed ? result.exposure_duration : "—"}
+          value={isExposed ? result.exposure_duration ?? "—" : "—"}
           subValue={isExposed ? `First exposed: ${result.exposure_date}` : "No exposure detected"}
           color={isExposed ? "warning" : "primary"}
         />
@@ -109,12 +178,202 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
           This score reflects your 3-year forward risk exposure, not an immediate threat level.
         </p>
 
-        <div className={`p-4 md:p-5 rounded-xl border-l-[3px] bg-${isExposed ? 'destructive' : 'safe'}/10 border-${isExposed ? 'destructive' : 'safe'}`}>
+        <div className={`p-4 md:p-5 rounded-xl border-l-[3px] ${isExposed ? 'bg-destructive/10 border-destructive' : 'bg-safe/10 border-safe'}`}>
           <p className="font-mono text-[12px] text-secondary leading-[1.8]">
             {isExposed
-              ? `This wallet was first exposed on ${result.exposure_date} — giving adversaries over ${result.exposure_duration.split(' ')[0]} to harvest your public key from the blockchain. Combined with ₹${result.total_value_inr.toLocaleString()} in exposed assets and ${result.outgoing_tx_count} on-chain signatures, this wallet represents a ${result.risk_level.toLowerCase()}-priority migration target. Cryptographically relevant quantum computers are projected to arrive by 2029.`
+              ? `This wallet was first exposed on ${result.exposure_date} — giving adversaries over ${result.exposure_duration?.split(' ')[0]} to harvest your public key from the blockchain. Combined with ₹${result.total_value_inr.toLocaleString()} in exposed assets and ${result.outgoing_tx_count} on-chain signatures, this wallet represents a ${result.risk_level.toLowerCase()}-priority migration target. Cryptographically relevant quantum computers are projected to arrive by 2029.`
               : "This wallet has never made an outgoing transaction, meaning its public key has never been revealed on the Ethereum blockchain. While the wallet balance creates a small residual score, there is no active quantum exposure. Continue to use fresh addresses for any future transactions."}
           </p>
+        </div>
+      </div>
+
+      {/* ============================================ */}
+      {/* PHASE 2 SECTION A: HNDL Warning with Timeline */}
+      {/* ============================================ */}
+      {isExposed && (
+        <div className="w-full rounded-2xl border border-warning/30 bg-card p-6 md:p-8 relative overflow-hidden">
+          {/* Decorative watermark */}
+          <span className="absolute top-4 right-6 text-[64px] opacity-[0.04] text-white pointer-events-none">⚠</span>
+
+          <span className="font-mono text-[11px] text-warning tracking-[2px] block mb-5">
+            {"// HARVEST NOW, DECRYPT LATER · ACTIVE THREAT"}
+          </span>
+
+          <p className="font-outfit text-[13px] text-secondary leading-[1.9] mb-4">
+            Your public key has been publicly visible on the Ethereum blockchain since {result.exposure_date}. State-level adversaries and well-funded threat actors are known to be downloading entire blockchain datasets today — storing public keys to decrypt once quantum hardware matures.
+          </p>
+          <p className="font-outfit text-[13px] text-secondary leading-[1.9] mb-8">
+            The Federal Reserve has explicitly warned that when quantum computing capability arrives, all historical transaction privacy collapses permanently. The harvesting of your public key may have already occurred — but there is still time to act.
+          </p>
+
+          {/* Timeline */}
+          <span className="font-mono text-[10px] text-muted tracking-[2px] block mb-1">
+            {"// YOUR EXPOSURE TIMELINE"}
+          </span>
+
+          <div className="flex flex-row items-start overflow-x-auto gap-0 pb-2 mt-4">
+            {/* Node 1 */}
+            <div className="flex flex-col items-center min-w-[110px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-destructive shadow-[0_0_8px_#ff3b5c] mb-2" />
+              <span className="font-mono text-[10px] tracking-[1px] text-destructive">{result.exposure_date}</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">Public key exposed on-chain</span>
+            </div>
+            {/* Line */}
+            <div className="h-[1px] flex-1 bg-border min-w-[30px] self-start mt-[4px]" />
+            {/* Node 2 */}
+            <div className="flex flex-col items-center min-w-[110px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-destructive mb-2" />
+              <span className="font-mono text-[10px] tracking-[1px] text-muted">AUG 2024</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">NIST PQC standards finalized</span>
+            </div>
+            {/* Line */}
+            <div className="h-[1px] flex-1 bg-border min-w-[30px] self-start mt-[4px]" />
+            {/* Node 3 */}
+            <div className="flex flex-col items-center min-w-[110px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-warning animate-pulse mb-2" />
+              <span className="font-mono text-[10px] tracking-[1px] text-warning">NOW · 2026</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">ETH migration in progress</span>
+            </div>
+            {/* Line */}
+            <div className="h-[1px] flex-1 bg-border min-w-[30px] self-start mt-[4px]" />
+            {/* Node 4 */}
+            <div className="flex flex-col items-center min-w-[110px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-muted mb-2" />
+              <span className="font-mono text-[10px] tracking-[1px] text-muted">~2029</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">CRQC risk window opens</span>
+            </div>
+            {/* Line */}
+            <div className="h-[1px] flex-1 bg-border min-w-[30px] self-start mt-[4px]" />
+            {/* Node 5 */}
+            <div className="flex flex-col items-center min-w-[110px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-muted mb-2" />
+              <span className="font-mono text-[10px] tracking-[1px] text-muted">2030</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">ETH full quantum resistance</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* PHASE 2 SECTION B: Migration Guide         */}
+      {/* ========================================== */}
+      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8">
+        <span className="font-mono text-[11px] text-primary tracking-[2px] mb-6 block">
+          {"// RECOMMENDED ACTION PLAN"}
+        </span>
+
+        <div className="flex flex-col gap-3">
+          {migrationSteps.map((step) => (
+            <div key={step.num} className="flex flex-row gap-5 items-start p-5 rounded-xl border border-border bg-bg-tertiary transition-all hover:border-primary cursor-default">
+              <span className="font-mono text-xl text-primary opacity-40 font-bold min-w-[32px]">{step.num}</span>
+              <div className="flex-1">
+                <h4 className="font-outfit font-semibold text-[13px] text-foreground mb-1.5">{step.title}</h4>
+                <p className="font-outfit text-[12px] text-secondary leading-[1.7] mb-2">{step.desc}</p>
+                <a
+                  href={step.href}
+                  target={step.target || undefined}
+                  rel={step.target ? "noopener noreferrer" : undefined}
+                  className="font-mono text-[10px] text-primary border-b border-border pb-[1px] hover:border-primary transition-colors no-underline"
+                >
+                  {step.link}
+                </a>
+              </div>
+              <span className={`font-mono text-[9px] tracking-[1px] px-2 py-1 rounded-sm border self-start shrink-0 ${step.tagClass}`}>
+                {step.tag}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ========================================== */}
+      {/* PHASE 2 SECTION C: Chain Status Board       */}
+      {/* ========================================== */}
+
+      {/* Section Divider */}
+      <div className="flex flex-row items-center gap-4 my-8">
+        <div className="flex-1 h-[1px] bg-border" />
+        <span className="font-mono text-[10px] text-muted tracking-[3px]">CHAIN STATUS BOARD</span>
+        <div className="flex-1 h-[1px] bg-border" />
+      </div>
+
+      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8">
+        <span className="font-mono text-[11px] text-muted tracking-[1px] mb-6 block">
+          {"// QUANTUM READINESS · MAJOR BLOCKCHAINS · UPDATED APRIL 2026"}
+        </span>
+
+        {/* Header Row */}
+        <div className="flex flex-row items-center gap-2 pb-3 border-b border-border">
+          <span className="font-outfit font-semibold text-[9px] text-muted tracking-[2px] uppercase flex-[2]">Chain</span>
+          <span className="font-outfit font-semibold text-[9px] text-muted tracking-[2px] uppercase flex-[3] hidden md:block">Algorithm</span>
+          <span className="font-outfit font-semibold text-[9px] text-muted tracking-[2px] uppercase flex-[4] hidden lg:block">Migration Status</span>
+          <span className="font-outfit font-semibold text-[9px] text-muted tracking-[2px] uppercase flex-[2]">Status</span>
+          <span className="font-outfit font-semibold text-[9px] text-muted tracking-[2px] uppercase flex-[2]">Progress</span>
+        </div>
+
+        {/* Data Rows */}
+        {CHAIN_DATA.map((row, i) => (
+          <div key={row.ticker} className={`flex flex-row items-center gap-2 py-4 ${i < CHAIN_DATA.length - 1 ? 'border-b border-white/[0.04]' : ''} hover:bg-white/[0.02] transition-colors rounded-lg px-2`}>
+            <span className="font-mono text-[12px] text-foreground flex-[2]">{row.chain}</span>
+            <span className="font-mono text-[11px] text-muted flex-[3] hidden md:block">{row.algorithm}</span>
+            <span className="font-outfit text-[11px] text-secondary flex-[4] hidden lg:block">{row.migration_status}</span>
+            <div className="flex-[2]">
+              <StatusPill status={row.status} />
+            </div>
+            <div className="flex items-center gap-2 flex-[2]">
+              <div className="w-[70px] h-[3px] bg-white/5 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full ${row.status === 'critical' ? 'bg-destructive' : row.status === 'progress' ? 'bg-warning' : 'bg-safe'}`}
+                  style={{ width: `${row.progress_percent}%` }}
+                />
+              </div>
+              <span className="font-mono text-[10px] text-muted">{row.progress_percent}%</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ========================================== */}
+      {/* PHASE 2 SECTION D: Educational Footer       */}
+      {/* ========================================== */}
+
+      {/* Section Divider */}
+      <div className="flex flex-row items-center gap-4 my-8">
+        <div className="flex-1 h-[1px] bg-border" />
+        <span className="font-mono text-[10px] text-muted tracking-[3px]">UNDERSTANDING THE THREAT</span>
+        <div className="flex-1 h-[1px] bg-border" />
+      </div>
+
+      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8 mb-16">
+        <span className="font-mono text-[11px] text-muted tracking-[2px] mb-6 block">
+          {"// TECHNICAL PRIMER · WHY THIS MATTERS"}
+        </span>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="border-l-[2px] border-border pl-4">
+            <span className="font-outfit font-semibold text-[12px] text-primary mb-2.5 block">
+              What is Shor&apos;s Algorithm?
+            </span>
+            <p className="font-outfit text-[11px] text-muted leading-[1.8]">
+              Developed by Peter Shor in 1994, Shor&apos;s Algorithm allows a quantum computer to solve the discrete logarithm problem — the mathematical foundation of elliptic curve cryptography — in polynomial time. On a classical computer, this would take billions of years. On a sufficiently powerful quantum machine, it could take minutes.
+            </p>
+          </div>
+          <div className="border-l-[2px] border-border pl-4">
+            <span className="font-outfit font-semibold text-[12px] text-primary mb-2.5 block">
+              Why is ECDSA vulnerable?
+            </span>
+            <p className="font-outfit text-[11px] text-muted leading-[1.8]">
+              Ethereum&apos;s ECDSA signatures are designed to reveal your public key the moment you send any transaction. Once that public key is on-chain, Shor&apos;s Algorithm can derive your private key from it. Private key equals complete wallet ownership — and blockchain transactions are irreversible by design.
+            </p>
+          </div>
+          <div className="border-l-[2px] border-border pl-4">
+            <span className="font-outfit font-semibold text-[12px] text-primary mb-2.5 block">
+              What are NIST PQC Standards?
+            </span>
+            <p className="font-outfit text-[11px] text-muted leading-[1.8]">
+              In August 2024, NIST finalized three post-quantum cryptography standards: ML-KEM (FIPS 203) for key encapsulation, ML-DSA / Dilithium (FIPS 204) for digital signatures, and SLH-DSA / SPHINCS+ (FIPS 205) for hash-based signatures. These are resistant to Shor&apos;s Algorithm and represent the current global standard for quantum-safe cryptography.
+            </p>
+          </div>
         </div>
       </div>
       
@@ -122,7 +381,26 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
   );
 }
 
-function Card({ title, value, subValue, color, extra }: { title: string, value: string, subValue: string, color: string, extra?: string }) {
+/* ============================================ */
+/* Sub-components                                */
+/* ============================================ */
+
+function StatusPill({ status }: { status: "critical" | "progress" | "safe" }) {
+  const config = {
+    critical: { text: "CRITICAL", dotClass: "bg-destructive", pillClass: "text-destructive border-destructive/40 bg-destructive/10" },
+    progress: { text: "IN PROGRESS", dotClass: "bg-warning", pillClass: "text-warning border-warning/40 bg-warning/10" },
+    safe: { text: "QUANTUM SAFE", dotClass: "bg-safe", pillClass: "text-safe border-safe/40 bg-safe/10" },
+  };
+  const c = config[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-sm border font-mono text-[9px] tracking-[1px] ${c.pillClass}`}>
+      <span className={`w-[5px] h-[5px] rounded-full ${c.dotClass}`} />
+      {c.text}
+    </span>
+  );
+}
+
+function Card({ title, value, subValue, color, extra }: { title: string; value: string; subValue: string; color: string; extra?: string }) {
   const borderColor = color === 'destructive' ? 'border-destructive' : color === 'warning' ? 'border-warning' : color === 'safe' ? 'border-safe' : 'border-primary';
   const textColor = color === 'destructive' ? 'text-destructive' : color === 'warning' ? 'text-warning' : color === 'safe' ? 'text-safe' : 'text-primary';
   

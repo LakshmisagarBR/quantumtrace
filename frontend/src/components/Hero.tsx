@@ -34,7 +34,7 @@ export function Hero({ onScan }: { onScan: (address: string) => void }) {
 
       <div className="w-full max-w-[640px] flex flex-col items-start text-left">
         <label className="font-mono text-[10px] text-muted tracking-[2px] mb-2 uppercase">
-          {"// ENTER ETHEREUM WALLET ADDRESS OR ENS NAME"}
+          {"// ENTER ETHEREUM WALLET ADDRESS"}
         </label>
         
         <form 
@@ -47,7 +47,7 @@ export function Hero({ onScan }: { onScan: (address: string) => void }) {
           <input
             type="text"
             className="flex-1 bg-transparent border-none outline-none font-mono text-[13px] text-foreground tracking-[1px] px-[18px] placeholder:text-muted"
-            placeholder="0x4f3a...b291 or vitalik.eth"
+            placeholder="0x4f3a...b291 (Ethereum address)"
             value={input}
             onChange={(e) => setInput(e.target.value)}
           />

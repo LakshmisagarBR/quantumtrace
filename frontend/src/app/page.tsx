@@ -17,7 +17,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`http://localhost:8000/analyze/${scannedAddress}`);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analyze/${scannedAddress}`);
       if (!response.ok) {
         throw new Error("Failed to scan address. It might be invalid or network error.");
       }
@@ -55,6 +55,26 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Page Footer Bar */}
+      <footer className="w-full border-t border-border py-6 px-6 mt-auto">
+        <div className="max-w-[1200px] mx-auto flex flex-row items-center justify-between flex-wrap gap-3">
+          <span className="font-mono text-[10px] text-muted tracking-[1px]">
+            © 2026 QUANTUMTRACE · READ-ONLY · NO WALLET CONNECTION
+          </span>
+          <div className="flex flex-row gap-5">
+            <a href="https://github.com/LakshmisagarBR/quantumtrace" target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
+              GITHUB
+            </a>
+            <a href="#" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
+              METHODOLOGY
+            </a>
+            <a href="#" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
+              SOURCES
+            </a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
