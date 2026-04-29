@@ -191,6 +191,8 @@ async def analyze_address(address: str):
                 "tokens": []
             }
             
+    except HTTPException:
+        raise  # Re-raise our specific error messages (e.g. invalid API key)
     except Exception as e:
         raise HTTPException(status_code=503, detail="External API unavailable. Try again shortly.")
 
