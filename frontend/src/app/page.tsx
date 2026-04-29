@@ -19,7 +19,14 @@ export default function Home() {
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analyze/${scannedAddress}`);
       if (!response.ok) {
-        throw new Error("Failed to scan address. It might be invalid or network error.");
+        let errorMsg = "Failed to scan address. It might be invalid or network error.";
+        try {
+          const errorData = await response.json();
+          if (errorData.detail) errorMsg = errorData.detail;
+        } catch {
+          // response wasn't JSON, use default message
+        }
+        throw new Error(errorMsg);
       }
       const data = await response.json();
       setResult(data);

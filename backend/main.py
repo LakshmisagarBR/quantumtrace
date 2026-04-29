@@ -48,16 +48,16 @@ async def analyze_address(address: str):
 
     try:
         async with httpx.AsyncClient() as client:
-            # 1. Fetch transaction list from Etherscan
-            tx_url = f"https://api.etherscan.io/api?module=account&action=txlist&address={address}&sort=asc&apikey={ETHERSCAN_API_KEY}"
+            # 1. Fetch transaction list from Etherscan (V2 API)
+            tx_url = f"https://api.etherscan.io/v2/api?chainid=1&module=account&action=txlist&address={address}&sort=asc&apikey={ETHERSCAN_API_KEY}"
             tx_response = await client.get(tx_url)
             tx_data = tx_response.json()
 
             # Check if Etherscan returned an error
             if tx_data.get("status") == "0" and not isinstance(tx_data.get("result"), list):
                 error_msg = tx_data.get("result", "Unknown Etherscan error")
-                if "Invalid API" in str(error_msg) or "Missing" in str(error_msg):
-                    raise HTTPException(status_code=502, detail="Etherscan API key is invalid or missing. Contact the site administrator.")
+                if "Invalid API" in str(error_msg) or "Missing" in str(error_msg) or "deprecated" in str(error_msg).lower():
+                    raise HTTPException(status_code=502, detail=f"Etherscan API error: {error_msg}")
                 # "No transactions found" is status 0 but is a valid empty result
                 if "No transactions found" not in str(error_msg):
                     raise HTTPException(status_code=502, detail=f"Etherscan error: {error_msg}")
@@ -65,14 +65,14 @@ async def analyze_address(address: str):
             # Small delay to respect rate limit (Etherscan free tier is 5 calls/sec)
             await asyncio.sleep(0.2)
 
-            # 2. Fetch ETH balance
-            bal_url = f"https://api.etherscan.io/api?module=account&action=balance&address={address}&tag=latest&apikey={ETHERSCAN_API_KEY}"
+            # 2. Fetch ETH balance (V2 API)
+            bal_url = f"https://api.etherscan.io/v2/api?chainid=1&module=account&action=balance&address={address}&tag=latest&apikey={ETHERSCAN_API_KEY}"
             bal_response = await client.get(bal_url)
             bal_data = bal_response.json()
 
             # Check if balance fetch failed
-            if bal_data.get("status") == "0" and "Invalid API" in str(bal_data.get("result", "")):
-                raise HTTPException(status_code=502, detail="Etherscan API key is invalid or missing. Contact the site administrator.")
+            if bal_data.get("status") == "0" and ("Invalid API" in str(bal_data.get("result", "")) or "deprecated" in str(bal_data.get("result", "")).lower()):
+                raise HTTPException(status_code=502, detail=f"Etherscan API error: {bal_data.get('result', '')}")
 
             await asyncio.sleep(0.2)
             price_url = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd,inr"
