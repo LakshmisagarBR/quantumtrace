@@ -204,7 +204,7 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
       {/* PHASE 2 SECTION A: HNDL Warning with Timeline */}
       {/* ============================================ */}
       {isExposed && (
-        <div className="w-full rounded-2xl border border-warning/30 bg-card p-6 md:p-8 relative overflow-hidden">
+        <div className="w-full rounded-2xl border border-warning/30 bg-card p-6 md:p-8 relative">
           {/* Decorative watermark */}
           <span className="absolute top-4 right-6 text-[64px] opacity-[0.04] text-white pointer-events-none">⚠</span>
 
@@ -224,10 +224,10 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
             {"// YOUR EXPOSURE TIMELINE"}
           </span>
 
-          <div className="flex flex-row items-start overflow-x-auto gap-0 pb-4 mt-4">
+          <div className="flex flex-row items-start overflow-x-auto gap-0 py-4 mt-4">
             {/* Node 1 */}
             <div className="flex flex-col items-center min-w-[120px] flex-1">
-              <div className="w-[10px] h-[10px] rounded-full bg-destructive shadow-[0_0_8px_#ff3b5c]" />
+              <div className="w-[10px] h-[10px] rounded-full bg-destructive shadow-[0_0_8px_2px_#ff3b5c]" />
               <span className="font-mono text-[10px] tracking-[1px] text-destructive mt-3">{result.exposure_date}</span>
               <span className="font-outfit text-[9px] text-muted text-center max-w-[100px] leading-[1.5] mt-1.5">Public key exposed on-chain</span>
             </div>
