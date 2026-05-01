@@ -36,6 +36,11 @@ const CHAIN_DATA: ChainEntry[] = [
   { chain: "Algorand", ticker: "ALGO", algorithm: "Falcon-1024 (NIST)", migration_status: "Live on mainnet Nov 2025", status: "safe", progress_percent: 85, last_updated: "April 2026" },
 ];
 
+function truncateAddress(addr: string): string {
+  if (addr.length <= 20) return addr;
+  return `${addr.slice(0, 10)}...${addr.slice(-8)}`;
+}
+
 export function ResultsDashboard({ result }: { result: ResultType | null }) {
   if (!result) return null;
 
@@ -48,7 +53,8 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
       title: "Create a fresh Ethereum wallet immediately",
       desc: "Generate a brand new wallet address that has never sent any transaction. Its public key will remain hidden until it transacts. Never reuse an address that has previously signed a transaction on-chain.",
       link: "→ HOW TO CREATE A SECURE WALLET",
-      href: "#",
+      href: "https://support.metamask.io/start/getting-started-with-metamask/",
+      target: "_blank",
       tag: "DO NOW",
       tagClass: "text-destructive border-destructive/40 bg-destructive/10",
     },
@@ -57,7 +63,8 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
       title: "Migrate your assets to the fresh wallet",
       desc: `Send all ETH and tokens from your exposed wallet to the new address. Note: this transaction will expose the new wallet's key too — but your exposure clock resets to today, not ${result.exposure_date}.`,
       link: "→ MIGRATION CHECKLIST",
-      href: "#",
+      href: "/migration-checklist",
+      target: "_blank",
       tag: "DO NOW",
       tagClass: "text-destructive border-destructive/40 bg-destructive/10",
     },
@@ -76,7 +83,8 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
       title: "Consider quantum-safe chains for long-term holdings",
       desc: "For assets held beyond 2029, consider chains already running NIST-approved quantum-safe cryptography: Algorand (Falcon-1024 on mainnet since November 2025) or QANplatform (ML-DSA signatures, mainnet mid-2026).",
       link: "→ QUANTUM-SAFE CHAIN COMPARISON",
-      href: "#",
+      href: "https://algorand.co/technology",
+      target: "_blank",
       tag: "LONG-TERM",
       tagClass: "text-safe border-safe/40 bg-safe/10",
     },
@@ -90,10 +98,10 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
   const migrationSteps = isExposed ? exposedSteps : safeSteps;
 
   return (
-    <div className="w-full flex flex-col gap-8 pb-[100px] animate-in fade-in slide-in-from-bottom-8 duration-700">
+    <div className="w-full flex flex-col gap-10 pb-[100px] animate-in fade-in slide-in-from-bottom-8 duration-700">
       
       {/* Contextual Banner */}
-      <div className="w-full rounded-2xl border border-border bg-[rgba(0,229,255,0.05)] p-4 md:p-6 flex flex-col md:flex-row items-start md:items-center gap-4">
+      <div className="w-full rounded-2xl border border-border bg-[rgba(0,229,255,0.05)] p-5 md:p-7 flex flex-col md:flex-row items-start md:items-center gap-4">
         <div className="w-9 h-9 rounded-lg border border-primary bg-[rgba(0,229,255,0.12)] flex items-center justify-center shrink-0">
           <span className="text-primary font-serif italic text-lg">i</span>
         </div>
@@ -114,13 +122,13 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
         <span className="font-mono text-[11px] text-muted tracking-[2px]">
           {"// SCAN COMPLETE • ETHEREUM MAINNET"}
         </span>
-        <div className="px-3 py-1.5 rounded-lg border border-primary bg-[rgba(0,229,255,0.12)]">
-          <span className="font-mono text-[12px] text-primary">{result.address}</span>
+        <div className="px-3 py-1.5 rounded-lg border border-primary bg-[rgba(0,229,255,0.12)]" title={result.address}>
+          <span className="font-mono text-[12px] text-primary">{truncateAddress(result.address)}</span>
         </div>
       </div>
 
       {/* Report Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <Card
           title="PUBLIC KEY STATUS"
           value={isExposed ? "EXPOSED" : "NOT EXPOSED"}
@@ -211,44 +219,44 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
             {"// YOUR EXPOSURE TIMELINE"}
           </span>
 
-          <div className="flex flex-row items-start overflow-x-auto gap-0 pb-2 mt-4">
+          <div className="flex flex-row items-start overflow-x-auto gap-0 pb-4 mt-4">
             {/* Node 1 */}
-            <div className="flex flex-col items-center min-w-[110px] flex-1">
-              <div className="w-[10px] h-[10px] rounded-full bg-destructive shadow-[0_0_8px_#ff3b5c] mb-2" />
-              <span className="font-mono text-[10px] tracking-[1px] text-destructive">{result.exposure_date}</span>
-              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">Public key exposed on-chain</span>
+            <div className="flex flex-col items-center min-w-[120px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-destructive shadow-[0_0_8px_#ff3b5c]" />
+              <span className="font-mono text-[10px] tracking-[1px] text-destructive mt-3">{result.exposure_date}</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[100px] leading-[1.5] mt-1.5">Public key exposed on-chain</span>
             </div>
             {/* Line */}
             <div className="h-[1px] flex-1 bg-border min-w-[30px] self-start mt-[4px]" />
             {/* Node 2 */}
-            <div className="flex flex-col items-center min-w-[110px] flex-1">
-              <div className="w-[10px] h-[10px] rounded-full bg-destructive mb-2" />
-              <span className="font-mono text-[10px] tracking-[1px] text-muted">AUG 2024</span>
-              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">NIST PQC standards finalized</span>
+            <div className="flex flex-col items-center min-w-[120px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-destructive" />
+              <span className="font-mono text-[10px] tracking-[1px] text-muted mt-3">AUG 2024</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[100px] leading-[1.5] mt-1.5">NIST PQC standards finalized</span>
             </div>
             {/* Line */}
             <div className="h-[1px] flex-1 bg-border min-w-[30px] self-start mt-[4px]" />
             {/* Node 3 */}
-            <div className="flex flex-col items-center min-w-[110px] flex-1">
-              <div className="w-[10px] h-[10px] rounded-full bg-warning animate-pulse mb-2" />
-              <span className="font-mono text-[10px] tracking-[1px] text-warning">NOW · 2026</span>
-              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">ETH migration in progress</span>
+            <div className="flex flex-col items-center min-w-[120px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-warning animate-pulse" />
+              <span className="font-mono text-[10px] tracking-[1px] text-warning mt-3">NOW · 2026</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[100px] leading-[1.5] mt-1.5">ETH migration in progress</span>
             </div>
             {/* Line */}
             <div className="h-[1px] flex-1 bg-border min-w-[30px] self-start mt-[4px]" />
             {/* Node 4 */}
-            <div className="flex flex-col items-center min-w-[110px] flex-1">
-              <div className="w-[10px] h-[10px] rounded-full bg-muted mb-2" />
-              <span className="font-mono text-[10px] tracking-[1px] text-muted">~2029</span>
-              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">CRQC risk window opens</span>
+            <div className="flex flex-col items-center min-w-[120px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-muted" />
+              <span className="font-mono text-[10px] tracking-[1px] text-muted mt-3">~2029</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[100px] leading-[1.5] mt-1.5">CRQC risk window opens</span>
             </div>
             {/* Line */}
             <div className="h-[1px] flex-1 bg-border min-w-[30px] self-start mt-[4px]" />
             {/* Node 5 */}
-            <div className="flex flex-col items-center min-w-[110px] flex-1">
-              <div className="w-[10px] h-[10px] rounded-full bg-muted mb-2" />
-              <span className="font-mono text-[10px] tracking-[1px] text-muted">2030</span>
-              <span className="font-outfit text-[9px] text-muted text-center max-w-[90px] leading-[1.4] mt-1">ETH full quantum resistance</span>
+            <div className="flex flex-col items-center min-w-[120px] flex-1">
+              <div className="w-[10px] h-[10px] rounded-full bg-muted" />
+              <span className="font-mono text-[10px] tracking-[1px] text-muted mt-3">2030</span>
+              <span className="font-outfit text-[9px] text-muted text-center max-w-[100px] leading-[1.5] mt-1.5">ETH full quantum resistance</span>
             </div>
           </div>
         </div>
@@ -257,14 +265,14 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
       {/* ========================================== */}
       {/* PHASE 2 SECTION B: Migration Guide         */}
       {/* ========================================== */}
-      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8">
+      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8 lg:p-9">
         <span className="font-mono text-[11px] text-primary tracking-[2px] mb-6 block">
           {"// RECOMMENDED ACTION PLAN"}
         </span>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           {migrationSteps.map((step) => (
-            <div key={step.num} className="flex flex-row gap-5 items-start p-5 rounded-xl border border-border bg-bg-tertiary transition-all hover:border-primary cursor-default">
+            <div key={step.num} className="flex flex-row gap-5 items-start p-5 md:p-6 rounded-xl border border-border bg-bg-tertiary transition-all hover:border-primary cursor-default">
               <span className="font-mono text-xl text-primary opacity-40 font-bold min-w-[32px]">{step.num}</span>
               <div className="flex-1">
                 <h4 className="font-outfit font-semibold text-[13px] text-foreground mb-1.5">{step.title}</h4>
@@ -297,7 +305,7 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
         <div className="flex-1 h-[1px] bg-border" />
       </div>
 
-      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8">
+      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8 lg:p-9">
         <span className="font-mono text-[11px] text-muted tracking-[1px] mb-6 block">
           {"// QUANTUM READINESS · MAJOR BLOCKCHAINS · UPDATED APRIL 2026"}
         </span>
@@ -344,13 +352,13 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
         <div className="flex-1 h-[1px] bg-border" />
       </div>
 
-      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8 mb-16">
+      <div className="w-full rounded-2xl bg-card border border-border p-6 md:p-8 lg:p-9 mb-16 overflow-hidden">
         <span className="font-mono text-[11px] text-muted tracking-[2px] mb-6 block">
           {"// TECHNICAL PRIMER · WHY THIS MATTERS"}
         </span>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="border-l-[2px] border-border pl-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 overflow-hidden">
+          <div className="border-l-[2px] border-border pl-4 min-w-0">
             <span className="font-outfit font-semibold text-[12px] text-primary mb-2.5 block">
               What is Shor&apos;s Algorithm?
             </span>
@@ -358,7 +366,7 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
               Developed by Peter Shor in 1994, Shor&apos;s Algorithm allows a quantum computer to solve the discrete logarithm problem — the mathematical foundation of elliptic curve cryptography — in polynomial time. On a classical computer, this would take billions of years. On a sufficiently powerful quantum machine, it could take minutes.
             </p>
           </div>
-          <div className="border-l-[2px] border-border pl-4">
+          <div className="border-l-[2px] border-border pl-4 min-w-0">
             <span className="font-outfit font-semibold text-[12px] text-primary mb-2.5 block">
               Why is ECDSA vulnerable?
             </span>
@@ -366,7 +374,7 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
               Ethereum&apos;s ECDSA signatures are designed to reveal your public key the moment you send any transaction. Once that public key is on-chain, Shor&apos;s Algorithm can derive your private key from it. Private key equals complete wallet ownership — and blockchain transactions are irreversible by design.
             </p>
           </div>
-          <div className="border-l-[2px] border-border pl-4">
+          <div className="border-l-[2px] border-border pl-4 min-w-0">
             <span className="font-outfit font-semibold text-[12px] text-primary mb-2.5 block">
               What are NIST PQC Standards?
             </span>
@@ -405,7 +413,7 @@ function Card({ title, value, subValue, color, extra }: { title: string; value: 
   const textColor = color === 'destructive' ? 'text-destructive' : color === 'warning' ? 'text-warning' : color === 'safe' ? 'text-safe' : 'text-primary';
   
   return (
-    <div className={`bg-card rounded-2xl border border-border-strong border-t-[2px] ${borderColor} p-6 flex flex-col`}>
+    <div className={`bg-card rounded-2xl border border-border-strong border-t-[2px] ${borderColor} p-7 md:p-8 flex flex-col`}>
       <span className="font-outfit font-semibold text-[10px] text-muted tracking-[2px] mb-3">{title}</span>
       <span className={`font-mono text-2xl font-bold ${textColor} mb-1`}>{value}</span>
       <span className="font-outfit text-[11px] text-muted">{subValue}</span>
