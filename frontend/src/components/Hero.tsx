@@ -24,7 +24,7 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
   };
 
   return (
-    <section className="pt-[100px] pb-[80px] w-full flex flex-col items-center justify-center text-center px-4">
+    <section className="pt-[72px] md:pt-[100px] pb-[40px] md:pb-[80px] w-full flex flex-col items-center justify-center text-center px-4">
       <div className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-border-strong bg-[rgba(0,229,255,0.12)] mb-8">
         <div className="w-[6px] h-[6px] rounded-full bg-primary animate-pulse" />
         <span className="font-mono text-primary text-[11px] tracking-[2px]">
@@ -37,14 +37,14 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
         <span className="text-primary">Quantum Safe?</span>
       </h1>
 
-      <p className="font-mono text-muted text-sm max-w-[500px] leading-[1.7] mb-12">
+      <p className="font-mono text-muted text-sm max-w-[500px] leading-[1.7] mb-8 md:mb-12">
         Quantum computers arriving by 2029 can derive private keys from exposed
         public keys. Scan any Ethereum, Bitcoin, Solana, or XRP address to find out your real risk —
         before it is too late.
       </p>
 
       {/* Chain Tab Selector */}
-      <div className="flex flex-row gap-2 mb-4 max-w-[640px] mx-auto overflow-x-auto pb-1 w-full">
+      <div className="flex flex-row flex-wrap gap-2 mb-4 max-w-[640px] mx-auto pb-1 w-full justify-center md:justify-start">
         {CHAINS.map((chain) => (
           <button
             key={chain.id}
@@ -53,7 +53,7 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
               setInput(''); // Clear input when switching chains
             }}
             className={`
-              flex-1 min-w-[80px] py-2 px-3 rounded-xl border font-mono text-[11px]
+              flex-1 min-w-[70px] py-2 px-2 md:px-3 rounded-xl border font-mono text-[11px]
               tracking-[1px] transition-all duration-200 whitespace-nowrap
               ${activeChain === chain.id
                 ? 'bg-card border-current font-semibold'
@@ -107,20 +107,20 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
         </span>
       </div>
 
-      <div className="w-full max-w-[1100px] mt-[60px] border-y border-border py-6 flex flex-wrap gap-6 items-center justify-between px-8 bg-[#0b0f1a]/50">
-        <div className="flex flex-col items-center md:items-start text-center md:text-left gap-1">
+      <div className="w-full max-w-[1100px] mt-[40px] md:mt-[60px] rounded-2xl md:rounded-none border md:border-y md:border-x-0 border-border py-0 md:py-6 grid grid-cols-2 md:flex md:flex-wrap md:gap-6 md:items-center md:justify-between md:px-8 bg-[#0b0f1a]/50 overflow-hidden">
+        <div className="flex flex-col items-center text-center gap-1 py-5 border-b border-r md:border-0 border-border md:items-start md:text-left">
           <span className="font-mono text-2xl font-bold text-primary">$2.4T</span>
           <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">BTC AT RISK</span>
         </div>
-        <div className="flex flex-col items-center md:items-start text-center md:text-left gap-1">
+        <div className="flex flex-col items-center text-center gap-1 py-5 border-b md:border-0 border-border md:items-start md:text-left">
           <span className="font-mono text-2xl font-bold text-primary">~2029</span>
           <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">CRQC TIMELINE</span>
         </div>
-        <div className="flex flex-col items-center md:items-start text-center md:text-left gap-1">
+        <div className="flex flex-col items-center text-center gap-1 py-5 border-r md:border-0 border-border md:items-start md:text-left">
           <span className="font-mono text-2xl font-bold text-primary">9 MIN</span>
           <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">KEY CRACK TIME</span>
         </div>
-        <div className="flex flex-col items-center md:items-start text-center md:text-left gap-1">
+        <div className="flex flex-col items-center text-center gap-1 py-5 md:items-start md:text-left">
           <span className="font-mono text-2xl font-bold text-primary">65%+</span>
           <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">RWAs ON ETH</span>
         </div>
