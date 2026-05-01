@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { Analytics } from "@vercel/analytics/next";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -29,6 +30,7 @@ export default function RootLayout({
     <html lang="en" className={cn("font-sans dark", outfit.variable, jetbrainsMono.variable)}>
       <body className="antialiased min-h-screen bg-background text-foreground">
         {children}
+        <Analytics />
       </body>
     </html>
   );
