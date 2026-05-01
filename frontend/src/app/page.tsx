@@ -74,10 +74,10 @@ export default function Home() {
             <a href="https://github.com/LakshmisagarBR/quantumtrace" target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
               GITHUB
             </a>
-            <a href="#" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
+            <a href="https://github.com/LakshmisagarBR/quantumtrace#readme" target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
               METHODOLOGY
             </a>
-            <a href="#" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
+            <a href="https://github.com/LakshmisagarBR/quantumtrace#readme" target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
               SOURCES
             </a>
           </div>

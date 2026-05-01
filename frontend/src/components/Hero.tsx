@@ -44,7 +44,7 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
       </p>
 
       {/* Chain Tab Selector */}
-      <div className="flex flex-row flex-wrap gap-2 mb-4 max-w-[640px] mx-auto pb-1 w-full justify-center md:justify-start">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4 max-w-[640px] mx-auto pb-1 w-full">
         {CHAINS.map((chain) => (
           <button
             key={chain.id}
@@ -53,7 +53,7 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
               setInput(''); // Clear input when switching chains
             }}
             className={`
-              flex-1 min-w-[70px] py-2 px-2 md:px-3 rounded-xl border font-mono text-[11px]
+              w-full py-2 px-2 md:px-3 rounded-xl border font-mono text-[11px]
               tracking-[1px] transition-all duration-200 whitespace-nowrap
               ${activeChain === chain.id
                 ? 'bg-card border-current font-semibold'
@@ -107,7 +107,7 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
         </span>
       </div>
 
-      <div className="w-full max-w-[1100px] mt-[40px] md:mt-[60px] rounded-2xl md:rounded-none border md:border-y md:border-x-0 border-border py-0 md:py-6 grid grid-cols-2 md:flex md:flex-wrap md:gap-6 md:items-center md:justify-between md:px-8 bg-[#0b0f1a]/50 overflow-hidden">
+      <div className="w-full max-w-[1100px] mt-[40px] md:mt-[60px] rounded-2xl border border-border py-0 md:py-6 grid grid-cols-2 md:flex md:flex-wrap md:gap-6 md:items-center md:justify-between md:px-8 bg-[#0b0f1a]/50 overflow-hidden">
         <div className="flex flex-col items-center text-center gap-1 py-5 border-b border-r md:border-0 border-border md:items-start md:text-left">
           <span className="font-mono text-2xl font-bold text-primary">$2.4T</span>
           <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">BTC AT RISK</span>

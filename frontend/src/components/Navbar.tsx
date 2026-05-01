@@ -10,13 +10,13 @@ export function Navbar() {
           <div className="w-7 h-7 rounded-md border border-primary flex items-center justify-center shadow-[0_0_10px_rgba(0,229,255,0.2)] animate-pulse">
             <span className="font-mono text-primary text-xs font-bold">QT</span>
           </div>
-          <span className="font-mono text-primary text-lg tracking-[2px] font-bold">
+          <span className="font-mono text-primary text-base sm:text-lg tracking-[1px] sm:tracking-[2px] font-bold">
             QUANTUMTRACE
           </span>
         </div>
         <div>
-          <span className="px-3 py-1 rounded-md border border-muted text-muted font-mono text-[11px]">
-            MULTI-CHAIN • v2.0
+          <span className="px-2 sm:px-3 py-1 rounded-md border border-muted text-muted font-mono text-[9px] sm:text-[11px] whitespace-nowrap">
+            <span className="hidden sm:inline">MULTI-CHAIN • </span>v2.0
           </span>
         </div>
       </div>
