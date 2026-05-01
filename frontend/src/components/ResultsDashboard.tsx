@@ -3,18 +3,22 @@
 import React from "react";
 
 export type ResultType = {
+  chain: string;
   address: string;
   is_exposed: boolean;
   exposure_date: string | null;
   exposure_duration: string | null;
   outgoing_tx_count: number;
   total_tx_count: number;
-  eth_balance: number;
+  eth_balance?: number;
+  balance: number;
+  balance_unit: string;
   total_value_usd: number;
   total_value_inr: number;
   risk_score: number;
   risk_level: string;
   recommendation: string;
+  migration_note: string;
   tokens: Array<{ symbol: string; balance: number }>;
 };
 
@@ -120,7 +124,7 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
       {/* Header */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <span className="font-mono text-[11px] text-muted tracking-[2px]">
-          {"// SCAN COMPLETE • ETHEREUM MAINNET"}
+          {"// SCAN COMPLETE • " + result.chain.toUpperCase() + " MAINNET"}
         </span>
         <div className="px-3 py-1.5 rounded-lg border border-primary bg-[rgba(0,229,255,0.12)]" title={result.address}>
           <span className="font-mono text-[12px] text-primary">{truncateAddress(result.address)}</span>
@@ -152,7 +156,7 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
           title="VALUE AT RISK"
           value={`$${(result.total_value_usd).toLocaleString()}`}
           subValue={`~₹${(result.total_value_inr).toLocaleString()} INR`}
-          extra2={`${result.eth_balance.toFixed(4)} ETH`}
+          extra2={`${result.balance.toFixed(4)} ${result.balance_unit}`}
           color={isExposed ? "destructive" : "safe"}
         />
       </div>
@@ -293,6 +297,15 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
             </div>
           ))}
         </div>
+
+        {/* Chain-specific migration note */}
+        {result.migration_note && (
+          <div className="mt-4 p-3 rounded-xl border border-border bg-bg-tertiary">
+            <p className="font-mono text-[10px] text-muted leading-[1.7]">
+              {"// CHAIN MIGRATION STATUS: "}{result.migration_note}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ========================================== */}

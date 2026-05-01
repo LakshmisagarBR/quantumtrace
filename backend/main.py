@@ -2,10 +2,12 @@ import os
 import re
 import datetime
 import asyncio
+import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dateutil.relativedelta import relativedelta
 import httpx
+import base58
 
 try:
     from dotenv import load_dotenv
@@ -13,7 +15,50 @@ try:
 except ImportError:
     pass  # python-dotenv not installed, rely on system env vars
 
-app = FastAPI(title="QuantumTrace API", version="1.0")
+
+def validate_bitcoin_address(address: str) -> bool:
+    """
+    Validates Bitcoin addresses across all three main formats:
+    P2PKH (starts with 1), P2SH (starts with 3),
+    and P2WPKH (starts with bc1q).
+    """
+    import re
+    # P2PKH: starts with 1, 25-34 chars, base58 characters only
+    p2pkh = re.match(r'^1[a-km-zA-HJ-NP-Z1-9]{24,33}$', address)
+    # P2SH: starts with 3, 34 chars, base58 characters only
+    p2sh = re.match(r'^3[a-km-zA-HJ-NP-Z1-9]{33}$', address)
+    # P2WPKH: starts with bc1q, 42 chars total
+    p2wpkh = re.match(r'^bc1q[a-z0-9]{38,}$', address)
+    return bool(p2pkh or p2sh or p2wpkh)
+
+
+def validate_solana_address(address: str) -> bool:
+    """
+    Validates Solana addresses. These are base58-encoded
+    32-byte Ed25519 public keys, typically 32-44 characters.
+    """
+    import re
+    # Solana addresses are base58, 32-44 characters
+    if not re.match(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$', address):
+        return False
+    # Additional check: must be valid base58
+    try:
+        decoded = base58.b58decode(address)
+        return len(decoded) == 32
+    except Exception:
+        return False
+
+
+def validate_xrp_address(address: str) -> bool:
+    """
+    Validates XRP Ledger addresses. These start with 'r'
+    and are 25-34 base58check characters total.
+    """
+    import re
+    return bool(re.match(r'^r[a-km-zA-HJ-NP-Z1-9]{24,33}$', address))
+
+
+app = FastAPI(title="QuantumTrace API", version="2.0")
 
 # Allow CORS for local dev and production
 app.add_middleware(
@@ -38,7 +83,7 @@ async def startup_check():
 
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health_check():
-    return {"status": "ok", "chain": "ethereum", "version": "1.0"}
+    return {"status": "ok", "chains": ["ethereum", "bitcoin", "solana", "xrp"], "version": "2.0"}
 
 @app.get("/analyze/{address}")
 async def analyze_address(address: str):
@@ -176,6 +221,7 @@ async def analyze_address(address: str):
                 )
 
             return {
+                "chain": "ethereum",
                 "address": address,
                 "is_exposed": is_exposed,
                 "exposure_date": exposure_date,
@@ -183,11 +229,14 @@ async def analyze_address(address: str):
                 "outgoing_tx_count": outgoing_count,
                 "total_tx_count": len(tx_list),
                 "eth_balance": eth_balance,
+                "balance": eth_balance,
+                "balance_unit": "ETH",
                 "total_value_usd": round(eth_balance * eth_usd, 2),
                 "total_value_inr": round(eth_balance * eth_inr, 2),
                 "risk_score": risk_score,
                 "risk_level": risk_level,
                 "recommendation": recommendation,
+                "migration_note": "Ethereum Strawmap targets full quantum resistance by 2030 via EIP-8141.",
                 "tokens": []
             }
             
@@ -195,6 +244,559 @@ async def analyze_address(address: str):
         raise  # Re-raise our specific error messages (e.g. invalid API key)
     except Exception as e:
         raise HTTPException(status_code=503, detail="External API unavailable. Try again shortly.")
+
+@app.get("/analyze/bitcoin/{address}")
+async def analyze_bitcoin(address: str):
+    """
+    Analyzes a Bitcoin address for quantum vulnerability.
+    Checks all three address formats (P2PKH, P2SH, P2WPKH).
+    Uses Blockchain.info API (free, no key required).
+    """
+
+    # Step 1: Validate the Bitcoin address format
+    if not validate_bitcoin_address(address):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Bitcoin address. Must be a P2PKH (starts with 1), P2SH (starts with 3), or P2WPKH (starts with bc1q) address."
+        )
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+
+        # Step 2: Fetch transaction history from Blockchain.info
+        # This API is free, no key required, and returns full tx history
+        try:
+            tx_url = f"https://blockchain.info/rawaddr/{address}?limit=50"
+            tx_response = await client.get(tx_url)
+            tx_data = tx_response.json()
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail="Could not reach Bitcoin blockchain data provider. Please try again shortly."
+            )
+
+        # Step 3: Determine exposure status
+        # For Bitcoin, any outgoing transaction (where this address
+        # is in the inputs) reveals the public key via scriptSig
+        total_tx_count = tx_data.get("n_tx", 0)
+        transactions = tx_data.get("txs", [])
+
+        is_exposed = False
+        exposure_date = None
+        exposure_duration = None
+        outgoing_count = 0
+        first_exposure_timestamp = None
+
+        for tx in reversed(transactions):  # reversed = oldest first
+            inputs = tx.get("inputs", [])
+            for inp in inputs:
+                prev_out = inp.get("prev_out", {})
+                if prev_out.get("addr") == address:
+                    outgoing_count += 1
+                    if not is_exposed:
+                        is_exposed = True
+                        first_exposure_timestamp = tx.get("time")
+
+        # Step 4: Calculate exposure duration if exposed
+        if is_exposed and first_exposure_timestamp:
+            first_dt = datetime.datetime.fromtimestamp(
+                first_exposure_timestamp, tz=datetime.timezone.utc
+            )
+            exposure_date = first_dt.strftime("%b %d, %Y")
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            delta = relativedelta(now, first_dt)
+            exposure_duration = f"{delta.years}Y {delta.months}M {delta.days}D"
+        else:
+            delta = None
+
+        # Step 5: Fetch BTC balance from Blockchain.info
+        # The balance is included in the rawaddr response in satoshis
+        # 1 BTC = 100,000,000 satoshis
+        btc_balance_satoshis = tx_data.get("final_balance", 0)
+        btc_balance = btc_balance_satoshis / 100_000_000
+
+        # Step 6: Fetch real BTC price from CoinGecko
+        await asyncio.sleep(0.2)
+        try:
+            price_url = "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,inr"
+            price_response = await client.get(price_url)
+            price_data = price_response.json()
+            btc_usd = price_data.get("bitcoin", {}).get("usd", 60000)
+            btc_inr = price_data.get("bitcoin", {}).get("inr", 5000000)
+        except Exception:
+            btc_usd = 60000
+            btc_inr = 5000000
+
+        total_value_usd = round(btc_balance * btc_usd, 2)
+        total_value_inr = round(btc_balance * btc_inr, 2)
+
+        # Step 7: Calculate risk score using the same weighted formula
+        # Bitcoin gets a severity multiplier because it has NO migration
+        # plan and the Google paper specifically targeted Bitcoin's timeline
+        risk_score = 0
+        if is_exposed:
+            exposure_binary = 50
+            years_score = min(delta.years, 5) * 6 if delta else 0
+            if total_value_inr >= 500000:
+                value_score = 10
+            elif total_value_inr >= 100000:
+                value_score = 7
+            elif total_value_inr >= 10000:
+                value_score = 4
+            else:
+                value_score = 0
+            if outgoing_count > 200:
+                tx_score = 10
+            elif outgoing_count > 50:
+                tx_score = 7
+            elif outgoing_count > 5:
+                tx_score = 4
+            else:
+                tx_score = 0
+            risk_score = min(exposure_binary + years_score + value_score + tx_score, 100)
+        else:
+            if total_value_inr >= 500000:
+                risk_score = 20
+            elif total_value_inr >= 100000:
+                risk_score = 14
+            elif total_value_inr >= 10000:
+                risk_score = 8
+            else:
+                risk_score = 5
+
+        risk_level = "CRITICAL" if risk_score > 60 else "MODERATE" if risk_score > 30 else "LOW"
+
+        # Step 8: Generate recommendation string
+        if is_exposed:
+            recommendation = (
+                f"Your Bitcoin wallet was first exposed on {exposure_date}, "
+                f"giving adversaries {delta.years if delta else 0} year{'s' if delta and delta.years != 1 else ''} "
+                f"to harvest your public key. Bitcoin has NO quantum migration roadmap — "
+                f"BIP 360 is debated with no implementation timeline. With \u20b9{round(total_value_inr):,} "
+                f"at risk and no protocol-level fix coming, this represents a {risk_level.lower()}-priority "
+                f"situation. Immediate action: move all BTC to a fresh address that has never spent."
+            )
+        else:
+            recommendation = (
+                f"This Bitcoin address has never spent any funds, meaning its public key has "
+                f"never been revealed on-chain. It is currently safe from quantum attacks. "
+                f"Monitor BIP 360 developments, though no implementation timeline exists as of 2026."
+            )
+
+        # Step 9: Return the complete response
+        return {
+            "chain": "bitcoin",
+            "address": address,
+            "is_exposed": is_exposed,
+            "exposure_date": exposure_date,
+            "exposure_duration": exposure_duration,
+            "outgoing_tx_count": outgoing_count,
+            "total_tx_count": total_tx_count,
+            "balance": btc_balance,
+            "balance_unit": "BTC",
+            "total_value_usd": total_value_usd,
+            "total_value_inr": total_value_inr,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "recommendation": recommendation,
+            "migration_note": "Bitcoin has no active quantum migration plan. BIP 360 is proposed but has no implementation timeline as of April 2026.",
+            "tokens": []
+        }
+
+
+@app.get("/analyze/solana/{address}")
+async def analyze_solana(address: str):
+    """
+    Analyzes a Solana wallet address for quantum vulnerability.
+    Uses the public Solana RPC endpoint (no API key required).
+    IMPORTANT: In Solana, the address IS the public key (base58
+    encoded). Any account that exists on-chain has its public key
+    exposed by definition — no outgoing transaction required.
+    """
+
+    # Step 1: Validate Solana address format
+    if not validate_solana_address(address):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid Solana address. Must be a 32-44 character base58-encoded public key."
+        )
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+
+        # Step 2: Check if the account exists on-chain via Solana RPC
+        # If it exists, the public key (= the address) is on-chain
+        try:
+            rpc_url = "https://api.mainnet-beta.solana.com"
+            account_payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "getAccountInfo",
+                "params": [address, {"encoding": "base58"}]
+            }
+            account_response = await client.post(
+                rpc_url,
+                json=account_payload,
+                headers={"Content-Type": "application/json"}
+            )
+            account_data = account_response.json()
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="Could not reach Solana RPC endpoint. Please try again shortly."
+            )
+
+        account_info = account_data.get("result", {}).get("value")
+
+        # If account_info is None, this address has never been used
+        is_exposed = account_info is not None
+
+        # Step 3: Get transaction count and first transaction date
+        outgoing_count = 0
+        total_tx_count = 0
+        exposure_date = None
+        exposure_duration = None
+        first_exposure_timestamp = None
+
+        if is_exposed:
+            await asyncio.sleep(0.2)
+            try:
+                # Get recent transaction signatures (up to 1000)
+                sig_payload = {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "getSignaturesForAddress",
+                    "params": [address, {"limit": 1000}]
+                }
+                sig_response = await client.post(
+                    rpc_url,
+                    json=sig_payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                sig_data = sig_response.json()
+                signatures = sig_data.get("result", [])
+                total_tx_count = len(signatures)
+                outgoing_count = total_tx_count  # All txs expose key in Solana
+
+                # Get the earliest transaction (last in the list, which is sorted newest first)
+                if signatures:
+                    oldest_sig = signatures[-1]
+                    first_exposure_timestamp = oldest_sig.get("blockTime")
+            except Exception:
+                pass
+
+        if is_exposed and first_exposure_timestamp:
+            first_dt = datetime.datetime.fromtimestamp(
+                first_exposure_timestamp, tz=datetime.timezone.utc
+            )
+            exposure_date = first_dt.strftime("%b %d, %Y")
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            delta = relativedelta(now, first_dt)
+            exposure_duration = f"{delta.years}Y {delta.months}M {delta.days}D"
+        else:
+            delta = None
+
+        # Step 4: Get SOL balance
+        # account_info.lamports gives the balance in lamports
+        # 1 SOL = 1,000,000,000 lamports
+        sol_balance = 0
+        if account_info:
+            lamports = account_info.get("lamports", 0)
+            sol_balance = lamports / 1_000_000_000
+
+        # Step 5: Fetch real SOL price from CoinGecko
+        await asyncio.sleep(0.2)
+        try:
+            price_url = "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd,inr"
+            price_response = await client.get(price_url)
+            price_data = price_response.json()
+            sol_usd = price_data.get("solana", {}).get("usd", 150)
+            sol_inr = price_data.get("solana", {}).get("inr", 12500)
+        except Exception:
+            sol_usd = 150
+            sol_inr = 12500
+
+        total_value_usd = round(sol_balance * sol_usd, 2)
+        total_value_inr = round(sol_balance * sol_inr, 2)
+
+        # Step 6: Calculate risk score
+        risk_score = 0
+        if is_exposed:
+            exposure_binary = 50
+            years_score = min(delta.years, 5) * 6 if delta else 0
+            if total_value_inr >= 500000:
+                value_score = 10
+            elif total_value_inr >= 100000:
+                value_score = 7
+            elif total_value_inr >= 10000:
+                value_score = 4
+            else:
+                value_score = 0
+            if outgoing_count > 200:
+                tx_score = 10
+            elif outgoing_count > 50:
+                tx_score = 7
+            elif outgoing_count > 5:
+                tx_score = 4
+            else:
+                tx_score = 0
+            risk_score = min(exposure_binary + years_score + value_score + tx_score, 100)
+        else:
+            if total_value_inr >= 500000:
+                risk_score = 20
+            elif total_value_inr >= 100000:
+                risk_score = 14
+            elif total_value_inr >= 10000:
+                risk_score = 8
+            else:
+                risk_score = 5
+
+        risk_level = "CRITICAL" if risk_score > 60 else "MODERATE" if risk_score > 30 else "LOW"
+
+        # Step 7: Generate recommendation
+        if is_exposed:
+            recommendation = (
+                f"Your Solana wallet address IS your public key by design — it has been "
+                f"publicly visible on the Solana blockchain since {exposure_date}. "
+                f"Unlike Ethereum, you do not need to send a transaction to expose your key in Solana. "
+                f"The Solana Foundation announced a Dilithium (ML-DSA) testnet in December 2025, "
+                f"but mainnet migration has no confirmed timeline. With \u20b9{round(total_value_inr):,} "
+                f"at risk, this represents a {risk_level.lower()}-priority situation."
+            )
+        else:
+            recommendation = (
+                f"This Solana address has never been used on-chain, meaning it has not yet "
+                f"been initialized and its public key is not yet visible. Once you receive "
+                f"or send any SOL, the account will be initialized and the public key exposed. "
+                f"Monitor Solana's Dilithium testnet progress for the eventual quantum-safe upgrade."
+            )
+
+        return {
+            "chain": "solana",
+            "address": address,
+            "is_exposed": is_exposed,
+            "exposure_date": exposure_date,
+            "exposure_duration": exposure_duration,
+            "outgoing_tx_count": outgoing_count,
+            "total_tx_count": total_tx_count,
+            "balance": sol_balance,
+            "balance_unit": "SOL",
+            "total_value_usd": total_value_usd,
+            "total_value_inr": total_value_inr,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "recommendation": recommendation,
+            "migration_note": "Solana Foundation announced Dilithium (ML-DSA) testnet in December 2025. Mainnet migration timeline is not yet confirmed.",
+            "tokens": []
+        }
+
+
+@app.get("/analyze/xrp/{address}")
+async def analyze_xrp(address: str):
+    """
+    Analyzes an XRP Ledger address for quantum vulnerability.
+    Uses the public XRPL cluster API (completely free, no key).
+    Exposure is determined by the account Sequence number —
+    each outgoing transaction increments it by 1 from a base of 1.
+    """
+
+    # Step 1: Validate XRP address format
+    if not validate_xrp_address(address):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid XRP address. Must start with 'r' and be 25-34 characters long."
+        )
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+
+        # Step 2: Fetch account info from XRPL public cluster
+        try:
+            xrpl_url = "https://xrplcluster.com"
+            account_payload = {
+                "method": "account_info",
+                "params": [{
+                    "account": address,
+                    "ledger_index": "current"
+                }]
+            }
+            account_response = await client.post(
+                xrpl_url,
+                json=account_payload,
+                headers={"Content-Type": "application/json"}
+            )
+            account_data = account_response.json()
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="Could not reach XRP Ledger API. Please try again shortly."
+            )
+
+        # Check if account exists
+        result = account_data.get("result", {})
+        if result.get("status") == "error":
+            # Account not found on ledger — never been funded
+            return {
+                "chain": "xrp",
+                "address": address,
+                "is_exposed": False,
+                "exposure_date": None,
+                "exposure_duration": None,
+                "outgoing_tx_count": 0,
+                "total_tx_count": 0,
+                "balance": 0,
+                "balance_unit": "XRP",
+                "total_value_usd": 0,
+                "total_value_inr": 0,
+                "risk_score": 0,
+                "risk_level": "LOW",
+                "recommendation": "This XRP address has never been activated on the ledger. It has no exposure risk.",
+                "migration_note": "XRP Ledger has a post-quantum roadmap targeting full transition by 2028.",
+                "tokens": []
+            }
+
+        account_info = result.get("account_data", {})
+
+        # Step 3: Determine exposure from Sequence number
+        # Sequence starts at 1 when account is created.
+        # Each outgoing transaction increments it by 1.
+        # Therefore outgoing_count = Sequence - 1
+        sequence = account_info.get("Sequence", 1)
+        outgoing_count = max(sequence - 1, 0)
+        is_exposed = outgoing_count > 0
+
+        # Step 4: Get first transaction date if exposed
+        exposure_date = None
+        exposure_duration = None
+        first_exposure_timestamp = None
+        delta = None
+
+        if is_exposed:
+            await asyncio.sleep(0.2)
+            try:
+                tx_payload = {
+                    "method": "account_tx",
+                    "params": [{
+                        "account": address,
+                        "limit": 1,
+                        "forward": True,
+                        "ledger_index_min": -1
+                    }]
+                }
+                tx_response = await client.post(
+                    xrpl_url,
+                    json=tx_payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                tx_data = tx_response.json()
+                transactions = tx_data.get("result", {}).get("transactions", [])
+
+                if transactions:
+                    # XRP close_time is seconds since Jan 1 2000
+                    # Convert to Unix timestamp by adding 946684800
+                    xrp_epoch_offset = 946684800
+                    close_time = transactions[0].get("tx", {}).get("date", 0)
+                    first_exposure_timestamp = close_time + xrp_epoch_offset
+            except Exception:
+                pass
+
+        if is_exposed and first_exposure_timestamp:
+            first_dt = datetime.datetime.fromtimestamp(
+                first_exposure_timestamp, tz=datetime.timezone.utc
+            )
+            exposure_date = first_dt.strftime("%b %d, %Y")
+            now = datetime.datetime.now(tz=datetime.timezone.utc)
+            delta = relativedelta(now, first_dt)
+            exposure_duration = f"{delta.years}Y {delta.months}M {delta.days}D"
+
+        # Step 5: Get XRP balance
+        # Balance in account_data is in drops (1 XRP = 1,000,000 drops)
+        balance_drops = int(account_info.get("Balance", 0))
+        xrp_balance = balance_drops / 1_000_000
+
+        # Step 6: Fetch real XRP price from CoinGecko
+        await asyncio.sleep(0.2)
+        try:
+            price_url = "https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=usd,inr"
+            price_response = await client.get(price_url)
+            price_data = price_response.json()
+            xrp_usd = price_data.get("ripple", {}).get("usd", 0.5)
+            xrp_inr = price_data.get("ripple", {}).get("inr", 42)
+        except Exception:
+            xrp_usd = 0.5
+            xrp_inr = 42
+
+        total_value_usd = round(xrp_balance * xrp_usd, 2)
+        total_value_inr = round(xrp_balance * xrp_inr, 2)
+
+        # Step 7: Calculate risk score
+        risk_score = 0
+        if is_exposed:
+            exposure_binary = 50
+            years_score = min(delta.years, 5) * 6 if delta else 0
+            if total_value_inr >= 500000:
+                value_score = 10
+            elif total_value_inr >= 100000:
+                value_score = 7
+            elif total_value_inr >= 10000:
+                value_score = 4
+            else:
+                value_score = 0
+            if outgoing_count > 200:
+                tx_score = 10
+            elif outgoing_count > 50:
+                tx_score = 7
+            elif outgoing_count > 5:
+                tx_score = 4
+            else:
+                tx_score = 0
+            risk_score = min(exposure_binary + years_score + value_score + tx_score, 100)
+        else:
+            if total_value_inr >= 500000:
+                risk_score = 20
+            elif total_value_inr >= 100000:
+                risk_score = 14
+            elif total_value_inr >= 10000:
+                risk_score = 8
+            else:
+                risk_score = 5
+
+        risk_level = "CRITICAL" if risk_score > 60 else "MODERATE" if risk_score > 30 else "LOW"
+
+        # Step 8: Generate recommendation
+        if is_exposed:
+            recommendation = (
+                f"Your XRP wallet was first exposed on {exposure_date}, with "
+                f"{outgoing_count} outgoing transactions revealing your public key. "
+                f"XRP Ledger has published a post-quantum readiness roadmap targeting "
+                f"full transition by 2028 — one of the most aggressive timelines of any "
+                f"major chain. With \u20b9{round(total_value_inr):,} at risk, monitor Ripple's "
+                f"H1 2026 milestones and prepare to migrate to a fresh address."
+            )
+        else:
+            recommendation = (
+                f"This XRP account exists on the ledger but has never sent a transaction, "
+                f"meaning its public key has not been revealed on-chain. It is currently safe. "
+                f"XRP Ledger's 2028 post-quantum transition will eventually provide a "
+                f"permanent protocol-level fix without requiring address changes."
+            )
+
+        return {
+            "chain": "xrp",
+            "address": address,
+            "is_exposed": is_exposed,
+            "exposure_date": exposure_date,
+            "exposure_duration": exposure_duration,
+            "outgoing_tx_count": outgoing_count,
+            "total_tx_count": outgoing_count,
+            "balance": xrp_balance,
+            "balance_unit": "XRP",
+            "total_value_usd": total_value_usd,
+            "total_value_inr": total_value_inr,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "recommendation": recommendation,
+            "migration_note": "XRP Ledger has a post-quantum roadmap with H1 2026 milestones and a full transition target of 2028.",
+            "tokens": []
+        }
+
 
 if __name__ == "__main__":
     import uvicorn

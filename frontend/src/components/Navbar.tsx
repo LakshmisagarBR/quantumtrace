@@ -16,7 +16,7 @@ export function Navbar() {
         </div>
         <div>
           <span className="px-3 py-1 rounded-md border border-muted text-muted font-mono text-[11px]">
-            ETH MAINNET • v1.0
+            MULTI-CHAIN • v2.0
           </span>
         </div>
       </div>

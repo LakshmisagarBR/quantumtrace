@@ -12,12 +12,13 @@ export default function Home() {
   const [result, setResult] = useState<ResultType | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleScan = async (scannedAddress: string) => {
+  const handleScan = async (scannedAddress: string, chain: string) => {
     setAddress(scannedAddress);
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/analyze/${scannedAddress}`);
+      const apiPath = chain === 'ethereum' ? 'analyze' : `analyze/${chain}`;
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/${apiPath}/${scannedAddress}`);
       if (!response.ok) {
         let errorMsg = "Failed to scan address. It might be invalid or network error.";
         try {

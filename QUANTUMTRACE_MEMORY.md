@@ -1,8 +1,8 @@
 ================================================================
 QUANTUMTRACE â€” COMPLETE PROJECT MEMORY DOCUMENT
 ================================================================
-Owner: Laksh | Status: In Development | Version: 1.0
-Last Updated: April 27, 2026
+Owner: Laksh | Status: In Development | Version: 2.0
+Last Updated: May 1, 2026
 ================================================================
 
 
@@ -12,7 +12,7 @@ SECTION 1 â€” PROJECT IDENTITY
 
 Name: QuantumTrace
 Tagline: "Is Your Wallet Quantum Safe?"
-Mission: To make the quantum threat to Ethereum wallets visible,
+Mission: To make the quantum threat to blockchain wallets visible,
 personal, and actionable for everyday crypto users â€” before
 cryptographically relevant quantum computers arrive around 2029.
 
@@ -27,9 +27,10 @@ What QuantumTrace is NOT:
 
 What QuantumTrace IS:
 - A read-only blockchain forensics and risk awareness tool.
-- A historical audit tool that scans any Ethereum address and
-  tells the user whether their public key is exposed on-chain,
-  for how long, how much value is at risk, and what to do.
+- A multi-chain audit tool that scans Ethereum, Bitcoin, Solana,
+  or XRP Ledger addresses and tells the user whether their public
+  key is exposed on-chain, for how long, how much value is at
+  risk, and what to do.
 - A bridge between technical quantum cryptography research and
   the everyday crypto user who has never heard of Shor's Algorithm.
 
@@ -91,21 +92,38 @@ Frontend:
 
 Backend:
 - Framework: FastAPI (Python)
-- Deployment: Fly.io
+- Deployment: Render (free tier)
 - Language: Python 3.11+
+- Dependencies: fastapi, uvicorn, httpx, python-dateutil, python-dotenv, base58
 
-External APIs (all free tier):
-- Etherscan API: For transaction history, balances, token holdings.
-  Base URL: https://api.etherscan.io/api
+External APIs (all free tier, no keys required for BTC/SOL/XRP):
+- Etherscan API: For Ethereum transaction history, balances.
+  Base URL: https://api.etherscan.io/v2/api (V2 API)
   Key: Free tier, requires registration at etherscan.io
-- CoinGecko API: For current ETH and ERC-20 token prices in
-  both USD and INR.
+- Blockchain.info API: For Bitcoin transaction history and balances.
+  Base URL: https://blockchain.info/rawaddr/{address}
+  Key: None required. Completely free.
+- Solana RPC: For Solana account info and transaction signatures.
+  Base URL: https://api.mainnet-beta.solana.com (public RPC)
+  Key: None required.
+- XRPL Public Cluster: For XRP Ledger account info and transactions.
+  Base URL: https://xrplcluster.com
+  Key: None required. Community cluster, always available.
+- CoinGecko API: For current crypto prices in USD and INR.
   Base URL: https://api.coingecko.com/api/v3
+  IDs: ethereum, bitcoin, solana, ripple
   Key: Free tier, no key required for basic endpoints.
 
 No AI API is needed. Zero generative AI calls. The entire
 product is deterministic logic â€” fetch data, calculate, display.
 This keeps the tool fast, free to run, and fully explainable.
+
+Chain Configuration:
+- All chain-specific settings live in frontend/src/lib/chains.ts
+- This file is the single source of truth for chain names, colors,
+  input placeholders, API paths, explorer URLs, and migration notes.
+- Adding a new chain in the future is a one-file frontend change
+  plus one new backend endpoint.
 
 ENS Resolution:
 - ENS names (like vitalik.eth) are resolved client-side in the
@@ -469,109 +487,89 @@ Right: Links to GITHUB, METHODOLOGY, SOURCES
 SECTION 7 â€” BACKEND ARCHITECTURE (FastAPI)
 ----------------------------------------------------------------
 
-Deployment: Fly.io (same as PulseBoard backend)
-Base URL pattern: https://quantumtrace-api.fly.dev
+Deployment: Render (free tier)
+Base URL pattern: https://quantumtrace-backend.onrender.com
 
--- PRIMARY ENDPOINT --
+-- ENDPOINTS OVERVIEW (V2 MULTI-CHAIN) --
 
-GET /analyze/{address}
+GET /health
+  Returns: { "status": "ok", "chains": ["ethereum", "bitcoin", "solana", "xrp"], "version": "2.0" }
 
-Step 1 â€” Validate address format.
-  Check that the address starts with "0x" and is exactly 42
-  characters long (0x + 40 hex chars). If invalid, return:
-  { "error": "Invalid Ethereum address format", "code": 400 }
+GET /analyze/{address}           â€” Ethereum analysis
+GET /analyze/bitcoin/{address}   â€” Bitcoin analysis
+GET /analyze/solana/{address}    â€” Solana analysis
+GET /analyze/xrp/{address}       â€” XRP Ledger analysis
 
-Step 2 â€” Fetch transaction list from Etherscan.
-  Call: https://api.etherscan.io/api?module=account&action=txlist
-        &address={address}&sort=asc&apikey={ETHERSCAN_API_KEY}
-  Filter the result to find only transactions where the "from"
-  field equals the input address (outgoing transactions only).
-  If the outgoing list is empty: public key is NOT exposed.
-  If the outgoing list is non-empty: public key IS exposed.
-    Record the timestamp of the very first outgoing transaction
-    (txlist is sorted ascending, so first in list = earliest).
-
-Step 3 â€” Fetch ETH balance from Etherscan.
-  Call: https://api.etherscan.io/api?module=account&action=balance
-        &address={address}&tag=latest&apikey={ETHERSCAN_API_KEY}
-  Convert result from Wei to ETH (divide by 1e18).
-
-Step 4 â€” Fetch ERC-20 token holdings from Etherscan.
-  Call: https://api.etherscan.io/api?module=account&action=tokentx
-        &address={address}&sort=desc&apikey={ETHERSCAN_API_KEY}
-  Deduplicate by contractAddress to get unique token list.
-  For v1, you can fetch prices for top 5 tokens by volume only.
-  This avoids excessive CoinGecko calls.
-
-Step 5 â€” Fetch current ETH price from CoinGecko.
-  Call: https://api.coingecko.com/api/v3/simple/price
-        ?ids=ethereum&vs_currencies=usd,inr
-  Store eth_usd and eth_inr.
-
-Step 6 â€” Calculate total portfolio value.
-  eth_value_usd = eth_balance * eth_usd
-  eth_value_inr = eth_balance * eth_inr
-  Add token values if fetched. Sum to get total_usd, total_inr.
-
-Step 7 â€” Calculate exposure duration.
-  If exposed:
-    first_exposure_timestamp = unix timestamp of first outgoing tx
-    exposure_date = human readable date string
-    exposure_duration = current timestamp - first_exposure_timestamp
-    Format as "Xy Yd" (e.g., "3Y 44D")
-  If not exposed:
-    exposure_date = None
-    exposure_duration = None
-
-Step 8 â€” Calculate risk score (0-100).
-  See formula in Section 6, Section F of this document.
-
-Step 9 â€” Generate recommendation string.
-  A template string populated with the wallet's specific data.
-  Example: "Your wallet was first exposed on {exposure_date},
-  giving adversaries {exposure_duration} to harvest your public
-  key. Combined with {total_inr} in exposed assets and
-  {outgoing_tx_count} on-chain signatures, this wallet represents
-  a {risk_level} priority migration target. Quantum computers
-  capable of exploiting this are projected to arrive by 2029."
-
-Step 10 â€” Return JSON response.
+All endpoints return the same JSON response shape:
   {
-    "address": "0x...",
+    "chain": "ethereum" | "bitcoin" | "solana" | "xrp",
+    "address": "...",
     "is_exposed": true/false,
     "exposure_date": "March 14, 2021" or null,
-    "exposure_duration": "3Y 44D" or null,
+    "exposure_duration": "3Y 2M 15D" or null,
     "outgoing_tx_count": 247,
     "total_tx_count": 389,
-    "eth_balance": 1.84,
+    "balance": 1.84,
+    "balance_unit": "ETH" | "BTC" | "SOL" | "XRP",
     "total_value_usd": 5042.00,
     "total_value_inr": 423180.00,
     "risk_score": 78,
-    "risk_level": "HIGH",
+    "risk_level": "CRITICAL" | "MODERATE" | "LOW",
     "recommendation": "Your wallet was first exposed...",
-    "tokens": [ { "symbol": "USDC", "balance": 120.5, ... } ]
+    "migration_note": "Chain-specific migration status...",
+    "tokens": []
   }
 
--- SECONDARY ENDPOINT --
+-- ETHEREUM ENDPOINT: GET /analyze/{address} --
+  Exposure rule: Outgoing transactions reveal the public key.
+  Data source: Etherscan V2 API (requires ETHERSCAN_API_KEY).
+  Balance: Wei from Etherscan, converted to ETH.
+  Price: CoinGecko id "ethereum".
 
-GET /health
-  Returns: { "status": "ok", "chain": "ethereum", "version": "1.0" }
-  Used by Fly.io health checks and for frontend status verification.
+-- BITCOIN ENDPOINT: GET /analyze/bitcoin/{address} --
+  Exposure rule: Spending transactions reveal public key via scriptSig.
+  Supported formats: P2PKH (1...), P2SH (3...), P2WPKH (bc1q...).
+  Data source: Blockchain.info rawaddr API (free, no key).
+  Balance: Satoshis from rawaddr, converted to BTC (Ã· 100,000,000).
+  Price: CoinGecko id "bitcoin".
+  Validation: validate_bitcoin_address() with three regex patterns.
 
--- ENVIRONMENT VARIABLES (Fly.io secrets) --
+-- SOLANA ENDPOINT: GET /analyze/solana/{address} --
+  Exposure rule: Solana address IS the public key (base58-encoded).
+    Any account that exists on-chain has its key exposed by definition.
+    Unlike Ethereum, no outgoing transaction is required for exposure.
+  Data source: Public Solana RPC (api.mainnet-beta.solana.com).
+    Uses getAccountInfo and getSignaturesForAddress JSON-RPC methods.
+  Balance: Lamports from account info, converted to SOL (Ã· 1,000,000,000).
+  Price: CoinGecko id "solana".
+  Validation: validate_solana_address() with base58 decode + 32-byte check.
+
+-- XRP ENDPOINT: GET /analyze/xrp/{address} --
+  Exposure rule: Same as Ethereum â€” outgoing transactions reveal key.
+    Exposure determined by account Sequence number (outgoing_count = Sequence - 1).
+  Data source: XRPL public cluster (xrplcluster.com).
+    Uses account_info and account_tx JSON-RPC methods.
+  Balance: Drops from account_data, converted to XRP (Ã· 1,000,000).
+  Price: CoinGecko id "ripple".
+  XRP epoch: close_time is seconds since Jan 1 2000.
+    Convert to Unix by adding 946684800.
+  Validation: validate_xrp_address() â€” starts with 'r', 25-34 chars.
+
+-- ADDRESS VALIDATION HELPERS --
+  Three helper functions at the top of main.py:
+  - validate_bitcoin_address(address) â€” regex for P2PKH/P2SH/P2WPKH
+  - validate_solana_address(address) â€” regex + base58.b58decode + 32-byte check
+  - validate_xrp_address(address) â€” regex for r-prefixed base58check
+
+-- ENVIRONMENT VARIABLES --
   ETHERSCAN_API_KEY=your_key_here
-  COINGECKO_API_KEY=optional_for_pro
   ALLOWED_ORIGINS=https://quantumtrace.vercel.app
 
 -- ERROR HANDLING --
-  All Etherscan/CoinGecko calls wrapped in try/except.
-  Rate limits: Etherscan free tier allows 5 calls/second.
-    Add a small asyncio.sleep(0.2) between sequential calls.
-  If Etherscan returns an error for the address (e.g., address
-    has no transactions): treat as not exposed, zero balance.
-  Always return a valid JSON response, never a raw 500 error.
-  On any upstream failure, return:
-    { "error": "External API unavailable. Try again shortly.", "code": 503 }
+  All external API calls wrapped in try/except.
+  Rate limits: asyncio.sleep(0.2) between sequential calls.
+  On upstream failure, return 503 with clear message.
+  Invalid addresses return 400 with format-specific guidance.
 
 -- CORS CONFIGURATION --
   Allow only https://quantumtrace.vercel.app in production.
@@ -582,20 +580,26 @@ GET /health
 SECTION 8 â€” DATA FLOW (END TO END)
 ----------------------------------------------------------------
 
-1. User types "0x4f3a...b291" or "vitalik.eth" into input.
-2. User clicks SCAN or presses Enter.
-3. If ENS name: ethers.js resolves it to 0x address client-side.
-4. Frontend sends: GET /analyze/0x4f3a...b291 to FastAPI on Fly.io.
-5. FastAPI validates address format.
-6. FastAPI calls Etherscan for transaction list (outgoing filter).
-7. FastAPI calls Etherscan for ETH balance.
-8. FastAPI calls Etherscan for ERC-20 token activity.
-9. FastAPI calls CoinGecko for ETH price (USD + INR).
-10. FastAPI calculates: exposure status, duration, value, risk score.
-11. FastAPI returns JSON to frontend.
-12. Frontend receives JSON, populates all UI sections.
-13. Risk gauge animates from 0% to score.
-14. Page scrolls smoothly to results.
+1. User selects a chain tab (Ethereum/Bitcoin/Solana/XRP).
+2. User types a wallet address into the chain-specific input.
+3. User clicks SCAN or presses Enter.
+4. If Ethereum ENS name: ethers.js resolves to 0x address client-side.
+5. Frontend determines API path from chain config:
+     Ethereum â†’ GET /analyze/{address}
+     Bitcoin  â†’ GET /analyze/bitcoin/{address}
+     Solana   â†’ GET /analyze/solana/{address}
+     XRP      â†’ GET /analyze/xrp/{address}
+6. Frontend sends request to FastAPI backend.
+7. FastAPI validates address format (chain-specific regex).
+8. FastAPI calls chain-specific data source for tx history.
+9. FastAPI calls chain-specific data source for balance.
+10. FastAPI calls CoinGecko for asset price (USD + INR).
+11. FastAPI calculates: exposure status, duration, value, risk score.
+12. FastAPI returns standardized JSON (same shape for all chains).
+13. Frontend receives JSON, populates all UI sections.
+14. Results show chain-specific balance unit (ETH/BTC/SOL/XRP).
+15. Migration note shows chain-specific quantum readiness status.
+16. Risk gauge animates from 0% to score.
 Total round-trip time target: under 3 seconds on a good connection.
 
 
@@ -663,27 +667,37 @@ Phase 3 â€” Polish and launch:
   14. Mobile responsiveness testing.
   15. Error states (invalid address, API down, no transactions).
   16. Loading skeleton states for result cards.
-  17. Deploy frontend to Vercel, backend to Fly.io.
+  17. Deploy frontend to Vercel, backend to Render.
   18. Write launch post for ETHIndia community and crypto Twitter.
 
 
 ----------------------------------------------------------------
-SECTION 11 â€” FUTURE ROADMAP (POST V1)
+SECTION 11 â€” ROADMAP
 ----------------------------------------------------------------
 
-V2 â€” Multi-chain expansion (in priority order):
-  1. Solana blockchain support (Solscan API, Ed25519 analysis)
-  2. Bitcoin blockchain support (Blockchain.info API)
-  3. XRP Ledger support (XRPL public API, free, no key needed)
+V2 â€” Multi-chain expansion (COMPLETED â€” May 2026):
+  âœ“ Bitcoin blockchain support (Blockchain.info API, P2PKH/P2SH/P2WPKH)
+  âœ“ Solana blockchain support (Public RPC, Ed25519 analysis)
+  âœ“ XRP Ledger support (XRPL public cluster, free, no key needed)
+  âœ“ Four-tab chain selector in the Hero UI
+  âœ“ Chain-specific input placeholders, labels, and helper text
+  âœ“ Unified response shape across all four chains
+  âœ“ Chain-specific migration notes in the results dashboard
+  âœ“ Navbar updated to MULTI-CHAIN Â· v2.0
 
-V3 â€” Advanced features:
+V3 â€” Advanced features (NEXT):
   - Batch address scanning (scan up to 10 addresses at once)
   - Portfolio risk aggregation across multiple wallets
   - Email alert when EIP-8141 ships on Ethereum mainnet
   - Integration into PulseBoard as the quantum badge feature
 
+V4 â€” Additional chains:
+  - Cardano (Ed25519 variant)
+  - Polkadot (Sr25519/Ed25519)
+  - Cosmos/Tendermint chains
+
 Hackathon targets:
-  - ETHIndia (primary target â€” build the demo around Ethereum)
+  - ETHIndia (primary target â€” multi-chain demo)
   - ETH Grants from Ethereum Foundation post-quantum team
   - QANplatform ecosystem grants (they actively fund PQC tooling)
 
@@ -697,25 +711,24 @@ blockchain data NOW. The scan does not detect if harvesting has
 occurred â€” it detects exposure status, which is the necessary
 condition for an HNDL attack to succeed.
 
-Only the SENDER's public key is exposed in a transaction.
-The recipient's public key remains hidden. The backend only
-checks for outgoing transactions (where "from" = the address).
+Exposure rules differ by chain:
+- Ethereum: Only SENDER's public key is exposed (outgoing tx).
+- Bitcoin: Only SENDER's public key is exposed (spending tx via scriptSig).
+- Solana: The address IS the public key. Any on-chain account
+  has its public key exposed by definition â€” no outgoing tx needed.
+- XRP: Same as Ethereum â€” outgoing tx reveals the public key.
+  Sequence number directly tells how many outgoing txs occurred.
 
 A wallet with only incoming transactions (zero outgoing) has
 never exposed its public key and should be flagged as NOT EXPOSED
-regardless of how large its balance is.
+regardless of how large its balance is. EXCEPTION: Solana,
+where any initialized account is exposed.
 
 The 2029 timeline comes from Google Quantum AI's March 2026
 responsible-disclosure paper. This is the most credible public
 estimate for when CRQCs could break ECDSA at scale.
 
 Migration to a fresh address is a temporary fix, not permanent.
-The permanent fix is EIP-8141 at the Ethereum protocol level.
-QuantumTrace should communicate this distinction clearly to users.
-
-QuantumTrace covers ALL Ethereum-compatible wallets in v1:
-MetaMask, Trust Wallet, Coinbase Wallet, Rainbow, Ledger
-(when connected to Ethereum), Phantom (Ethereum network).
 This is because the tool queries the Ethereum blockchain directly,
 not the wallet application.
 
