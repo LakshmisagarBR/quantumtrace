@@ -150,8 +150,9 @@ export function ResultsDashboard({ result }: { result: ResultType | null }) {
         />
         <Card
           title="VALUE AT RISK"
-          value={`₹${(result.total_value_inr).toLocaleString()}`}
-          subValue={`~$${(result.total_value_usd).toLocaleString()} USD • ${result.eth_balance.toFixed(2)} ETH`}
+          value={`$${(result.total_value_usd).toLocaleString()}`}
+          subValue={`~₹${(result.total_value_inr).toLocaleString()} INR`}
+          extra2={`${result.eth_balance.toFixed(4)} ETH`}
           color={isExposed ? "destructive" : "safe"}
         />
       </div>
@@ -408,15 +409,16 @@ function StatusPill({ status }: { status: "critical" | "progress" | "safe" }) {
   );
 }
 
-function Card({ title, value, subValue, color, extra }: { title: string; value: string; subValue: string; color: string; extra?: string }) {
+function Card({ title, value, subValue, color, extra, extra2 }: { title: string; value: string; subValue: string; color: string; extra?: string; extra2?: string }) {
   const borderColor = color === 'destructive' ? 'border-destructive' : color === 'warning' ? 'border-warning' : color === 'safe' ? 'border-safe' : 'border-primary';
   const textColor = color === 'destructive' ? 'text-destructive' : color === 'warning' ? 'text-warning' : color === 'safe' ? 'text-safe' : 'text-primary';
   
   return (
-    <div className={`bg-card rounded-2xl border border-border-strong border-t-[2px] ${borderColor} p-7 md:p-8 flex flex-col`}>
+    <div className={`bg-card rounded-2xl border border-border-strong border-t-[2px] ${borderColor} p-7 md:p-8 flex flex-col overflow-hidden`}>
       <span className="font-outfit font-semibold text-[10px] text-muted tracking-[2px] mb-3">{title}</span>
-      <span className={`font-mono text-2xl font-bold ${textColor} mb-1`}>{value}</span>
+      <span className={`font-mono text-2xl font-bold ${textColor} mb-1 break-all`}>{value}</span>
       <span className="font-outfit text-[11px] text-muted">{subValue}</span>
+      {extra2 && <span className="font-mono text-[11px] text-muted mt-0.5">{extra2}</span>}
       {extra && <span className="font-outfit text-[11px] text-secondary italic mt-3 pt-3 border-t border-border">{extra}</span>}
     </div>
   );
