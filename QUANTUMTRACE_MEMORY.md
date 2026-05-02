@@ -17,7 +17,7 @@ personal, and actionable for everyday crypto users â€” before
 cryptographically relevant quantum computers arrive around 2029.
 
 Domain Target: quantumtrace.vercel.app
-GitHub Repo: LakshCoder10/quantumtrace (to be created)
+GitHub Repo: LakshmisagarBR/quantumtrace
 
 What QuantumTrace is NOT:
 - It is not a competing blockchain or wallet.

@@ -90,7 +90,7 @@ export default function Home() {
             © 2026 QUANTUMTRACE · READ-ONLY · NO WALLET CONNECTION
           </span>
           <div className="flex flex-row gap-5">
-            <a href="https://github.com/LakshCoder10/quantumtrace" target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
+            <a href="https://github.com/LakshmisagarBR/quantumtrace" target="_blank" rel="noopener noreferrer" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
               GITHUB
             </a>
             <a href="/methodology" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
