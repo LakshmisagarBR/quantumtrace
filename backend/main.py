@@ -22,7 +22,6 @@ def validate_bitcoin_address(address: str) -> bool:
     P2PKH (starts with 1), P2SH (starts with 3),
     and P2WPKH (starts with bc1q).
     """
-    import re
     # P2PKH: starts with 1, 25-34 chars, base58 characters only
     p2pkh = re.match(r'^1[a-km-zA-HJ-NP-Z1-9]{24,33}$', address)
     # P2SH: starts with 3, 34 chars, base58 characters only
@@ -37,7 +36,6 @@ def validate_solana_address(address: str) -> bool:
     Validates Solana addresses. These are base58-encoded
     32-byte Ed25519 public keys, typically 32-44 characters.
     """
-    import re
     # Solana addresses are base58, 32-44 characters
     if not re.match(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$', address):
         return False
@@ -54,7 +52,6 @@ def validate_xrp_address(address: str) -> bool:
     Validates XRP Ledger addresses. These start with 'r'
     and are 25-34 base58check characters total.
     """
-    import re
     return bool(re.match(r'^r[a-km-zA-HJ-NP-Z1-9]{24,33}$', address))
 
 
