@@ -684,6 +684,11 @@ V2 â€” Multi-chain expansion (COMPLETED â€” May 2026):
   âœ“ Unified response shape across all four chains
   âœ“ Chain-specific migration notes in the results dashboard
   âœ“ Navbar updated to MULTI-CHAIN Â· v2.0
+  âœ“ Dynamic multi-chain logic in UI (Migration steps, HNDL warning, Timeline Node 3)
+  âœ“ Enhanced UI/UX (Reset Scan button, Explorer address links, Chain-aware loading states)
+  âœ“ Dedicated static pages created (/migration-checklist, /methodology, /sources)
+  âœ“ Value at Risk explicitly prioritizes INR formatting
+  âœ“ Vercel Analytics and Speed Insights deployed via .npmrc configuration
 
 V3 â€” Advanced features (NEXT):
   - Batch address scanning (scan up to 10 addresses at once)
