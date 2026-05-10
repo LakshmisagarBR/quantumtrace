@@ -1,8 +1,8 @@
 ================================================================
 QUANTUMTRACE â€” COMPLETE PROJECT MEMORY DOCUMENT
 ================================================================
-Owner: Laksh | Status: In Development | Version: 2.0
-Last Updated: May 1, 2026
+Owner: Laksh | Status: In Development | Version: 2.1
+Last Updated: May 10, 2026
 ================================================================
 
 
@@ -109,7 +109,7 @@ External APIs (all free tier, no keys required for BTC/SOL/XRP):
 - XRPL Public Cluster: For XRP Ledger account info and transactions.
   Base URL: https://xrplcluster.com
   Key: None required. Community cluster, always available.
-- CoinGecko API: For current crypto prices in USD and INR.
+- CoinGecko API: For current crypto prices in USD.
   Base URL: https://api.coingecko.com/api/v3
   IDs: ethereum, bitcoin, solana, ripple
   Key: Free tier, no key required for basic endpoints.
@@ -362,10 +362,10 @@ Card 3 â€” OUTGOING TRANSACTIONS
   Value: Total count of outgoing transactions in cyan
   Sub: "Signature visible in every tx"
 
-Card 4 â€” VALUE AT RISK
+Card 4 – VALUE AT RISK
   Top border: Red (if exposed) or Green (if safe)
-  Value: INR amount (e.g., "â‚¹4,23,180") in red or green
-  Sub: USD equivalent + ETH amount + "incl. tokens"
+  Value: USD amount (e.g., "$5,042") in red or green
+  Sub: Balance in native token + "USD value via CoinGecko at time of scan"
 
 -- SECTION F: RISK GAUGE --
 Full-width card with rounded corners, bg-secondary background.
@@ -386,12 +386,19 @@ Risk explanation paragraph below: A dynamically generated 3-4
   the risk color (red, amber, or green).
 
 Risk score calculation formula (weighted):
-  exposure_binary: 0 if not exposed, 50 if exposed (base weight)
+  exposure_score: Graduated based on outgoing tx count:
+    0 outgoing tx → 0 points
+    1-2 outgoing tx → 30 points
+    3-10 outgoing tx → 40 points
+    11-50 outgoing tx → 45 points
+    Over 50 outgoing tx → 50 points
   years_exposed: min(years since first tx, 5) * 6  (max 30 points)
-  value_score: based on INR value brackets (0-10 points)
+  value_score: based on USD value brackets (0-10 points):
+    Under $500 → 0 pts; $500-$5K → 3 pts; $5K-$25K → 5 pts;
+    $25K-$100K → 7 pts; Over $100K → 10 pts
   tx_count_score: based on transaction count brackets (0-10 points)
-  Total: exposure_binary + years_exposed + value_score + tx_count_score
-  Capped at 100. If not exposed, score is 0-10 based on balance only.
+  Total: exposure_score + years_exposed + value_score + tx_count_score
+  Capped at 100. If not exposed, score is 0-20 based on USD balance only.
 
 -- SECTION G: HNDL WARNING --
 Full-width card with amber border tint.
@@ -408,9 +415,9 @@ Timeline visualization below the text:
   A horizontal row of 5 nodes connected by lines, each showing:
   Node 1 (red dot): The wallet's first exposure date
   Node 2 (red dot): August 2024 â€” NIST PQC standards finalized
-  Node 3 (amber blinking dot): "NOW Â· APR 2026" â€” ETH migration active
-  Node 4 (muted dot): "~2029" â€” CRQC risk window opens
-  Node 5 (muted dot): "2030" â€” ETH full quantum resistance target
+  Node 3 (amber blinking dot): "NOW Â· APR 2026" Â€” ETH migration active
+  Node 4 (muted dot): "~2029" Â€” CRQC risk window opens
+  Node 5 (muted dot): "2030" Â€” ETH full quantum resistance target
 
 -- SECTION H: MIGRATION GUIDE --
 Full-width card, cyan-accented title "// RECOMMENDED ACTION PLAN".
@@ -593,7 +600,7 @@ SECTION 8 â€” DATA FLOW (END TO END)
 7. FastAPI validates address format (chain-specific regex).
 8. FastAPI calls chain-specific data source for tx history.
 9. FastAPI calls chain-specific data source for balance.
-10. FastAPI calls CoinGecko for asset price (USD + INR).
+10. FastAPI calls CoinGecko for asset price (USD).
 11. FastAPI calculates: exposure status, duration, value, risk score.
 12. FastAPI returns standardized JSON (same shape for all chains).
 13. Frontend receives JSON, populates all UI sections.
@@ -687,8 +694,16 @@ V2 â€” Multi-chain expansion (COMPLETED â€” May 2026):
   âœ“ Dynamic multi-chain logic in UI (Migration steps, HNDL warning, Timeline Node 3)
   âœ“ Enhanced UI/UX (Reset Scan button, Explorer address links, Chain-aware loading states)
   âœ“ Dedicated static pages created (/migration-checklist, /methodology, /sources)
-  âœ“ Value at Risk explicitly prioritizes INR formatting
   âœ“ Vercel Analytics and Speed Insights deployed via .npmrc configuration
+
+V2.1 – Scoring & credibility refinements (COMPLETED — May 2026):
+  ✔ Replaced INR value brackets with dynamic USD brackets using CoinGecko prices
+  ✔ Replaced binary 50-point exposure jump with graduated exposure scoring (0/30/40/45/50)
+  ✔ Added Ed25519 vs ECDSA nuance note for Solana scan results
+  ✔ Added source citation tooltips to all four homepage stats
+  ✔ Complete methodology page rewrite with accurate scoring tables
+  ✔ Eliminated all ₹/INR references from codebase (USD only)
+  ✔ Chain-Specific Vulnerability Notes section added to methodology
 
 V3 â€” Advanced features (NEXT):
   - Batch address scanning (scan up to 10 addresses at once)

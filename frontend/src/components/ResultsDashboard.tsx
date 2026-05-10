@@ -235,9 +235,9 @@ export function ResultsDashboard({ result, onReset }: { result: ResultType | nul
         />
         <Card
           title="VALUE AT RISK"
-          value={`₹${Math.round(result.total_value_inr).toLocaleString('en-IN')}`}
-          subValue={`~$${result.total_value_usd.toLocaleString()} USD`}
-          extra2={`${result.balance.toFixed(4)} ${result.balance_unit}`}
+          value={`$${result.total_value_usd.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+          subValue={`${result.balance.toFixed(4)} ${result.balance_unit}`}
+          extra2={`USD value via CoinGecko at time of scan`}
           color={isExposed ? "destructive" : "safe"}
         />
       </div>
@@ -275,10 +275,25 @@ export function ResultsDashboard({ result, onReset }: { result: ResultType | nul
         <div className={`p-4 md:p-5 rounded-xl border-l-[3px] ${isExposed ? 'bg-destructive/10 border-destructive' : 'bg-safe/10 border-safe'}`}>
           <p className="font-mono text-[12px] text-secondary leading-[1.8]">
             {isExposed
-              ? `This wallet was first exposed on ${result.exposure_date} — giving adversaries over ${result.exposure_duration?.split(' ')[0]} to harvest your public key from the blockchain. Combined with ₹${result.total_value_inr.toLocaleString()} in exposed assets and ${result.outgoing_tx_count} on-chain signatures, this wallet represents a ${result.risk_level.toLowerCase()}-priority migration target. Cryptographically relevant quantum computers are projected to arrive by 2029.`
+              ? `This wallet was first exposed on ${result.exposure_date} — giving adversaries over ${result.exposure_duration?.split(' ')[0]} to harvest your public key from the blockchain. Combined with $${result.total_value_usd.toLocaleString()} in exposed assets and ${result.outgoing_tx_count} on-chain signatures, this wallet represents a ${result.risk_level.toLowerCase()}-priority migration target. Cryptographically relevant quantum computers are projected to arrive by 2029.`
               : `This wallet has never made an outgoing transaction, meaning its public key has never been revealed on the ${chainDisplayName} blockchain. While the wallet balance creates a small residual score, there is no active quantum exposure. Continue to use fresh addresses for any future transactions.`}
           </p>
         </div>
+
+        {/* Ed25519 nuance note for Solana scans */}
+        {result.chain === 'solana' && isExposed && (
+          <div className="p-4 md:p-5 rounded-xl border border-[#a855f7]/30 bg-[#a855f7]/5">
+            <div className="flex items-start gap-3">
+              <span className="text-[#a855f7] text-lg mt-0.5 shrink-0">ℹ</span>
+              <div>
+                <p className="font-outfit text-[12px] font-semibold text-[#a855f7] mb-1.5 tracking-[1px]">ED25519 SIGNATURE NOTE</p>
+                <p className="font-outfit text-[12px] text-secondary leading-[1.8]">
+                  Solana uses Ed25519 signatures. While any on-chain activity exposes your public key, Ed25519 faces Grover&apos;s algorithm (quadratic quantum speedup) rather than Shor&apos;s algorithm (exponential). Solana&apos;s quantum risk is real but arrives later than ECDSA-based chains like Ethereum and Bitcoin.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ============================================ */}

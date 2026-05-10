@@ -153,23 +153,32 @@ async def analyze_address(address: str):
 
             # --- Risk Score Calculation ---
             risk_score = 0
+            total_usd = eth_balance * eth_usd
 
             if is_exposed:
-                # Base score for any exposure at all
-                exposure_binary = 50
+                # Graduated exposure score based on outgoing transaction count
+                if outgoing_count > 50:
+                    exposure_score = 50
+                elif outgoing_count > 10:
+                    exposure_score = 45
+                elif outgoing_count > 2:
+                    exposure_score = 40
+                else:
+                    exposure_score = 30  # 1-2 outgoing txs
 
                 # Years exposed: use the relativedelta already calculated above
                 # delta.years gives accurate full years, not calendar year subtraction
                 years_score = min(delta.years, 5) * 6  # Max 30 points
 
-                # Value score based on INR brackets
-                total_inr = eth_balance * eth_inr  # uses real price from CoinGecko
-                if total_inr >= 500000:
+                # Value score based on USD brackets (using CoinGecko price)
+                if total_usd >= 100000:
                     value_score = 10
-                elif total_inr >= 100000:
+                elif total_usd >= 25000:
                     value_score = 7
-                elif total_inr >= 10000:
-                    value_score = 4
+                elif total_usd >= 5000:
+                    value_score = 5
+                elif total_usd >= 500:
+                    value_score = 3
                 else:
                     value_score = 0
 
@@ -183,16 +192,15 @@ async def analyze_address(address: str):
                 else:
                     tx_score = 0
 
-                risk_score = min(exposure_binary + years_score + value_score + tx_score, 100)
+                risk_score = min(exposure_score + years_score + value_score + tx_score, 100)
 
             else:
                 # Not exposed: only residual balance risk applies, max 20 points
-                total_inr = eth_balance * eth_inr
-                if total_inr >= 500000:
+                if total_usd >= 100000:
                     risk_score = 20
-                elif total_inr >= 100000:
+                elif total_usd >= 25000:
                     risk_score = 14
-                elif total_inr >= 10000:
+                elif total_usd >= 5000:
                     risk_score = 8
                 else:
                     risk_score = 5
@@ -203,7 +211,7 @@ async def analyze_address(address: str):
                 recommendation = (
                     f"Your wallet was first exposed on {exposure_date}, giving adversaries "
                     f"{delta.years} year{'s' if delta.years != 1 else ''} to harvest your public key. "
-                    f"Combined with ₹{round(total_inr):,} in exposed assets and "
+                    f"Combined with ${round(total_usd):,} in exposed assets and "
                     f"{outgoing_count} on-chain signatures, this wallet represents a "
                     f"{risk_level.lower()}-priority migration target. "
                     f"Cryptographically relevant quantum computers are projected to arrive by 2029. "
@@ -331,14 +339,25 @@ async def analyze_bitcoin(address: str):
         # plan and the Google paper specifically targeted Bitcoin's timeline
         risk_score = 0
         if is_exposed:
-            exposure_binary = 50
+            # Graduated exposure score based on outgoing transaction count
+            if outgoing_count > 50:
+                exposure_score = 50
+            elif outgoing_count > 10:
+                exposure_score = 45
+            elif outgoing_count > 2:
+                exposure_score = 40
+            else:
+                exposure_score = 30  # 1-2 outgoing txs
             years_score = min(delta.years, 5) * 6 if delta else 0
-            if total_value_inr >= 500000:
+            # Value score based on USD brackets
+            if total_value_usd >= 100000:
                 value_score = 10
-            elif total_value_inr >= 100000:
+            elif total_value_usd >= 25000:
                 value_score = 7
-            elif total_value_inr >= 10000:
-                value_score = 4
+            elif total_value_usd >= 5000:
+                value_score = 5
+            elif total_value_usd >= 500:
+                value_score = 3
             else:
                 value_score = 0
             if outgoing_count > 200:
@@ -349,13 +368,13 @@ async def analyze_bitcoin(address: str):
                 tx_score = 4
             else:
                 tx_score = 0
-            risk_score = min(exposure_binary + years_score + value_score + tx_score, 100)
+            risk_score = min(exposure_score + years_score + value_score + tx_score, 100)
         else:
-            if total_value_inr >= 500000:
+            if total_value_usd >= 100000:
                 risk_score = 20
-            elif total_value_inr >= 100000:
+            elif total_value_usd >= 25000:
                 risk_score = 14
-            elif total_value_inr >= 10000:
+            elif total_value_usd >= 5000:
                 risk_score = 8
             else:
                 risk_score = 5
@@ -368,7 +387,7 @@ async def analyze_bitcoin(address: str):
                 f"Your Bitcoin wallet was first exposed on {exposure_date}, "
                 f"giving adversaries {delta.years if delta else 0} year{'s' if delta and delta.years != 1 else ''} "
                 f"to harvest your public key. Bitcoin has NO quantum migration roadmap — "
-                f"BIP 360 is debated with no implementation timeline. With \u20b9{round(total_value_inr):,} "
+                f"BIP 360 is debated with no implementation timeline. With ${round(total_value_usd):,} "
                 f"at risk and no protocol-level fix coming, this represents a {risk_level.lower()}-priority "
                 f"situation. Immediate action: move all BTC to a fresh address that has never spent."
             )
@@ -517,14 +536,25 @@ async def analyze_solana(address: str):
         # Step 6: Calculate risk score
         risk_score = 0
         if is_exposed:
-            exposure_binary = 50
+            # Graduated exposure score based on outgoing transaction count
+            if outgoing_count > 50:
+                exposure_score = 50
+            elif outgoing_count > 10:
+                exposure_score = 45
+            elif outgoing_count > 2:
+                exposure_score = 40
+            else:
+                exposure_score = 30  # 1-2 outgoing txs
             years_score = min(delta.years, 5) * 6 if delta else 0
-            if total_value_inr >= 500000:
+            # Value score based on USD brackets
+            if total_value_usd >= 100000:
                 value_score = 10
-            elif total_value_inr >= 100000:
+            elif total_value_usd >= 25000:
                 value_score = 7
-            elif total_value_inr >= 10000:
-                value_score = 4
+            elif total_value_usd >= 5000:
+                value_score = 5
+            elif total_value_usd >= 500:
+                value_score = 3
             else:
                 value_score = 0
             if outgoing_count > 200:
@@ -535,13 +565,13 @@ async def analyze_solana(address: str):
                 tx_score = 4
             else:
                 tx_score = 0
-            risk_score = min(exposure_binary + years_score + value_score + tx_score, 100)
+            risk_score = min(exposure_score + years_score + value_score + tx_score, 100)
         else:
-            if total_value_inr >= 500000:
+            if total_value_usd >= 100000:
                 risk_score = 20
-            elif total_value_inr >= 100000:
+            elif total_value_usd >= 25000:
                 risk_score = 14
-            elif total_value_inr >= 10000:
+            elif total_value_usd >= 5000:
                 risk_score = 8
             else:
                 risk_score = 5
@@ -555,7 +585,7 @@ async def analyze_solana(address: str):
                 f"publicly visible on the Solana blockchain since {exposure_date}. "
                 f"Unlike Ethereum, you do not need to send a transaction to expose your key in Solana. "
                 f"The Solana Foundation announced a Dilithium (ML-DSA) testnet in December 2025, "
-                f"but mainnet migration has no confirmed timeline. With \u20b9{round(total_value_inr):,} "
+                f"but mainnet migration has no confirmed timeline. With ${round(total_value_usd):,} "
                 f"at risk, this represents a {risk_level.lower()}-priority situation."
             )
         else:
@@ -726,14 +756,25 @@ async def analyze_xrp(address: str):
         # Step 7: Calculate risk score
         risk_score = 0
         if is_exposed:
-            exposure_binary = 50
+            # Graduated exposure score based on outgoing transaction count
+            if outgoing_count > 50:
+                exposure_score = 50
+            elif outgoing_count > 10:
+                exposure_score = 45
+            elif outgoing_count > 2:
+                exposure_score = 40
+            else:
+                exposure_score = 30  # 1-2 outgoing txs
             years_score = min(delta.years, 5) * 6 if delta else 0
-            if total_value_inr >= 500000:
+            # Value score based on USD brackets
+            if total_value_usd >= 100000:
                 value_score = 10
-            elif total_value_inr >= 100000:
+            elif total_value_usd >= 25000:
                 value_score = 7
-            elif total_value_inr >= 10000:
-                value_score = 4
+            elif total_value_usd >= 5000:
+                value_score = 5
+            elif total_value_usd >= 500:
+                value_score = 3
             else:
                 value_score = 0
             if outgoing_count > 200:
@@ -744,13 +785,13 @@ async def analyze_xrp(address: str):
                 tx_score = 4
             else:
                 tx_score = 0
-            risk_score = min(exposure_binary + years_score + value_score + tx_score, 100)
+            risk_score = min(exposure_score + years_score + value_score + tx_score, 100)
         else:
-            if total_value_inr >= 500000:
+            if total_value_usd >= 100000:
                 risk_score = 20
-            elif total_value_inr >= 100000:
+            elif total_value_usd >= 25000:
                 risk_score = 14
-            elif total_value_inr >= 10000:
+            elif total_value_usd >= 5000:
                 risk_score = 8
             else:
                 risk_score = 5
@@ -764,7 +805,7 @@ async def analyze_xrp(address: str):
                 f"{outgoing_count} outgoing transactions revealing your public key. "
                 f"XRP Ledger has published a post-quantum readiness roadmap targeting "
                 f"full transition by 2028 — one of the most aggressive timelines of any "
-                f"major chain. With \u20b9{round(total_value_inr):,} at risk, monitor Ripple's "
+                f"major chain. With ${round(total_value_usd):,} at risk, monitor Ripple's "
                 f"H1 2026 milestones and prepare to migrate to a fresh address."
             )
         else:

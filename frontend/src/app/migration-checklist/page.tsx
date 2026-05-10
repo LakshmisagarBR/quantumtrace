@@ -11,7 +11,7 @@ export default function MigrationChecklist() {
     {
       num: "02",
       title: "Test with a small amount first",
-      desc: "Send a small test transaction (equivalent to ₹100 or less) from your old wallet to the new address. Confirm it arrives correctly by checking the block explorer. This verifies you have the correct address before transferring your full balance.",
+      desc: "Send a small test transaction ($1 or less) from your old wallet to the new address. Confirm it arrives correctly by checking the block explorer. This verifies you have the correct address before transferring your full balance.",
     },
     {
       num: "03",

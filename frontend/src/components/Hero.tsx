@@ -3,6 +3,33 @@
 import React, { useState } from "react";
 import { CHAINS, ChainId } from "@/lib/chains";
 
+function StatWithTooltip({ value, label, citation }: { value: string; label: string; citation: string }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  return (
+    <div
+      className="flex flex-col items-center text-center gap-1 py-5 md:items-start md:text-left relative cursor-help"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+      onClick={() => setShowTooltip(prev => !prev)}
+    >
+      <span className="font-mono text-2xl font-bold text-primary">
+        {value}
+        <sup className="text-[9px] text-muted font-normal ml-0.5 align-super">ⓘ</sup>
+      </span>
+      <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">{label}</span>
+      {showTooltip && (
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-[260px] p-3 rounded-lg border border-border-strong bg-[#0b0f1a] shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
+          <p className="font-outfit text-[10px] text-secondary leading-[1.6] text-center">
+            {citation}
+          </p>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-border-strong" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Hero({ onScan }: { onScan: (address: string, chain: string) => void }) {
   const [input, setInput] = useState("");
   const [activeChain, setActiveChain] = useState<ChainId>('ethereum');
@@ -108,23 +135,36 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
       </div>
 
       <div className="w-full max-w-[1100px] mt-[40px] md:mt-[60px] rounded-2xl border border-border py-0 md:py-6 grid grid-cols-2 md:flex md:flex-wrap md:gap-6 md:items-center md:justify-between md:px-8 bg-[#0b0f1a]/50 overflow-hidden">
-        <div className="flex flex-col items-center text-center gap-1 py-5 border-b border-r md:border-0 border-border md:items-start md:text-left">
-          <span className="font-mono text-2xl font-bold text-primary">$2.4T</span>
-          <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">BTC AT RISK</span>
+        <div className="border-b border-r md:border-0 border-border">
+          <StatWithTooltip
+            value="$2.4T"
+            label="BTC AT RISK"
+            citation="Based on Deloitte's 2024 report estimating ~25% of all Bitcoin (worth trillions) is in quantum-vulnerable addresses with exposed public keys."
+          />
         </div>
-        <div className="flex flex-col items-center text-center gap-1 py-5 border-b md:border-0 border-border md:items-start md:text-left">
-          <span className="font-mono text-2xl font-bold text-primary">~2029</span>
-          <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">CRQC TIMELINE</span>
+        <div className="border-b md:border-0 border-border">
+          <StatWithTooltip
+            value="~2029"
+            label="CRQC TIMELINE"
+            citation="Projected timeline from the Global Risk Institute's 2024 Quantum Threat Timeline Report and Google Quantum AI's March 2026 responsible-disclosure paper."
+          />
         </div>
-        <div className="flex flex-col items-center text-center gap-1 py-5 border-r md:border-0 border-border md:items-start md:text-left">
-          <span className="font-mono text-2xl font-bold text-primary">9 MIN</span>
-          <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">KEY CRACK TIME</span>
+        <div className="border-r md:border-0 border-border">
+          <StatWithTooltip
+            value="9 MIN"
+            label="KEY CRACK TIME"
+            citation="Based on theoretical CRQC estimates from the Quantum Threat Timeline Report (IQSD, 2024) and academic projections for Shor's algorithm on secp256k1 with ~4,000 logical qubits."
+          />
         </div>
-        <div className="flex flex-col items-center text-center gap-1 py-5 md:items-start md:text-left">
-          <span className="font-mono text-2xl font-bold text-primary">65%+</span>
-          <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">RWAs ON ETH</span>
+        <div>
+          <StatWithTooltip
+            value="65%+"
+            label="RWAs ON ETH"
+            citation="Based on RWA.xyz 2024 market data showing Ethereum hosts over 65% of all tokenized real-world assets by value across public blockchains."
+          />
         </div>
       </div>
     </section>
   );
 }
+
