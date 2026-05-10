@@ -19,11 +19,11 @@ function StatWithTooltip({ value, label, citation }: { value: string; label: str
       </span>
       <span className="text-[9px] text-muted tracking-[2px] uppercase font-semibold">{label}</span>
       {showTooltip && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-[260px] p-3 rounded-lg border border-border-strong bg-[#0b0f1a] shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
+        <div className="absolute z-50 top-full left-1/2 -translate-x-1/2 mt-2 w-[260px] p-3 rounded-lg border border-border-strong bg-[#0b0f1a] shadow-[0_4px_24px_rgba(0,0,0,0.6)]">
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-border-strong" />
           <p className="font-outfit text-[10px] text-secondary leading-[1.6] text-center">
             {citation}
           </p>
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-border-strong" />
         </div>
       )}
     </div>
@@ -134,7 +134,7 @@ export function Hero({ onScan }: { onScan: (address: string, chain: string) => v
         </span>
       </div>
 
-      <div className="w-full max-w-[1100px] mt-[40px] md:mt-[60px] rounded-2xl border border-border py-0 md:py-6 grid grid-cols-2 md:flex md:flex-wrap md:gap-6 md:items-center md:justify-between md:px-8 bg-[#0b0f1a]/50 overflow-hidden">
+      <div className="w-full max-w-[1100px] mt-[40px] md:mt-[60px] rounded-2xl border border-border py-0 md:py-6 grid grid-cols-2 md:flex md:flex-wrap md:gap-6 md:items-center md:justify-between md:px-8 bg-[#0b0f1a]/50 overflow-visible">
         <div className="border-b border-r md:border-0 border-border">
           <StatWithTooltip
             value="$2.4T"
