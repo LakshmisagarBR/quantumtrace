@@ -88,7 +88,7 @@ async def analyze_address(address: str):
         raise HTTPException(status_code=400, detail="Invalid Ethereum address format. Must be a 42-character hex string starting with 0x.")
 
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             # 1. Paginate Etherscan txlist to fetch ALL transactions
             # Etherscan V2 supports page/offset for pagination (max offset=10000)
             all_outgoing_txs = []
@@ -338,17 +338,29 @@ async def analyze_bitcoin(address: str):
 
         page = 1
         while fetched < total_tx_count and page < max_pages:
-            await asyncio.sleep(0.3)  # Rate-limit — Blockchain.info has no key
-            try:
-                offset_url = f"https://blockchain.info/rawaddr/{address}?limit={page_size}&offset={fetched}"
-                offset_response = await client.get(offset_url)
-                offset_data = offset_response.json()
-                page_txs = offset_data.get("txs", [])
-            except Exception:
-                break  # Stop paging on error, use what we have
+            await asyncio.sleep(0.4)  # Rate-limit — Blockchain.info has no key
+
+            # Fetch with retry on rate limits
+            page_txs = None
+            for retry in range(3):
+                try:
+                    offset_url = f"https://blockchain.info/rawaddr/{address}?limit={page_size}&offset={fetched}"
+                    offset_response = await client.get(offset_url)
+
+                    # Blockchain.info returns 429 on rate limit
+                    if offset_response.status_code == 429 or offset_response.status_code >= 500:
+                        await asyncio.sleep(1.0 * (2 ** retry))
+                        continue
+
+                    offset_data = offset_response.json()
+                    page_txs = offset_data.get("txs", [])
+                    break  # Success
+                except Exception:
+                    await asyncio.sleep(1.0 * (2 ** retry))
+                    continue
 
             if not page_txs:
-                break
+                break  # Exhausted retries or no more txs
 
             for tx in page_txs:
                 inputs = tx.get("inputs", [])
@@ -498,7 +510,7 @@ async def analyze_solana(address: str):
             detail="Invalid Solana address. Must be a 32-44 character base58-encoded public key."
         )
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
 
         # Step 2: Check if the account exists on-chain via Solana RPC
         # If it exists, the public key (= the address) is on-chain
@@ -535,17 +547,19 @@ async def analyze_solana(address: str):
         first_exposure_timestamp = None
 
         if is_exposed:
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.3)
             try:
                 # Paginate getSignaturesForAddress to find the true oldest tx.
                 # Results come newest-first; we walk backwards using `before`
-                # until we exhaust all pages (max 10 pages to cap latency).
+                # until we exhaust all pages.
+                # IMPORTANT: Check for RPC error responses (rate limits) and
+                # retry with backoff instead of treating errors as empty pages.
                 all_count = 0
                 oldest_block_time = None
                 before_sig = None
-                max_pages = 10
+                max_pages = 25  # Up to 25k txs
 
-                for _ in range(max_pages):
+                for page_idx in range(max_pages):
                     params: dict = {"limit": 1000}
                     if before_sig:
                         params["before"] = before_sig
@@ -556,16 +570,28 @@ async def analyze_solana(address: str):
                         "method": "getSignaturesForAddress",
                         "params": [address, params]
                     }
-                    sig_response = await client.post(
-                        rpc_url,
-                        json=sig_payload,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    sig_data = sig_response.json()
-                    page = sig_data.get("result", [])
 
-                    if not page:
-                        break  # No more signatures
+                    # Retry with exponential backoff on RPC errors/rate limits
+                    page = None
+                    for retry in range(3):
+                        sig_response = await client.post(
+                            rpc_url,
+                            json=sig_payload,
+                            headers={"Content-Type": "application/json"}
+                        )
+                        sig_data = sig_response.json()
+
+                        # Check for RPC-level errors (rate limits, server errors)
+                        if "error" in sig_data:
+                            # Exponential backoff: 1s, 2s, 4s
+                            await asyncio.sleep(1.0 * (2 ** retry))
+                            continue
+
+                        page = sig_data.get("result", [])
+                        break  # Success
+
+                    if page is None or len(page) == 0:
+                        break  # Exhausted retries or genuinely no more sigs
 
                     all_count += len(page)
 
@@ -577,7 +603,8 @@ async def analyze_solana(address: str):
                     if len(page) < 1000:
                         break
 
-                    await asyncio.sleep(0.2)  # Rate-limit between pages
+                    # Rate-limit between pages (0.5s for public RPC)
+                    await asyncio.sleep(0.5)
 
                 total_tx_count = all_count
                 outgoing_count = all_count  # All txs expose key in Solana
