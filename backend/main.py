@@ -717,8 +717,9 @@ async def analyze_solana(address: str):
                             if bt_data.get("result"):
                                 first_exposure_timestamp = bt_data["result"]
                     except Exception as e:
-                        _debug["phase2_error"] = f"{type(e).__name__}: {str(e)}"
-                        print(f"[SOLANA] Phase 2 error: {type(e).__name__}: {e}")
+                        err_msg = str(e).replace(HELIUS_API_KEY, "***") if HELIUS_API_KEY else str(e)
+                        _debug["phase2_error"] = f"{type(e).__name__}: {err_msg}"
+                        print(f"[SOLANA] Phase 2 error: {type(e).__name__}: {err_msg}")
                 else:
                     _debug["phase2"] = "skipped_reached_end"
 

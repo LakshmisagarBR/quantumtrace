@@ -2,7 +2,7 @@
 QUANTUMTRACE â€” COMPLETE PROJECT MEMORY DOCUMENT
 ================================================================
 Owner: Laksh | Status: In Development | Version: 2.1
-Last Updated: May 10, 2026
+Last Updated: May 11, 2026
 ================================================================
 
 
@@ -103,9 +103,11 @@ External APIs (all free tier, no keys required for BTC/SOL/XRP):
 - Blockchain.info API: For Bitcoin transaction history and balances.
   Base URL: https://blockchain.info/rawaddr/{address}
   Key: None required. Completely free.
-- Solana RPC: For Solana account info and transaction signatures.
-  Base URL: https://api.mainnet-beta.solana.com (public RPC)
-  Key: None required.
+- Helius RPC: For Solana account info and transaction signatures.
+  Base URL: https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}
+  Key: Free tier at helius.dev (1M credits/month, 10 req/s).
+  Migrated from public Solana RPC (api.mainnet-beta.solana.com) due to
+  severe rate limiting on shared hosting IPs like Render.
 - XRPL Public Cluster: For XRP Ledger account info and transactions.
   Base URL: https://xrplcluster.com
   Key: None required. Community cluster, always available.
@@ -545,8 +547,22 @@ All endpoints return the same JSON response shape:
   Exposure rule: Solana address IS the public key (base58-encoded).
     Any account that exists on-chain has its key exposed by definition.
     Unlike Ethereum, no outgoing transaction is required for exposure.
-  Data source: Public Solana RPC (api.mainnet-beta.solana.com).
-    Uses getAccountInfo and getSignaturesForAddress JSON-RPC methods.
+  Data source: Helius RPC (mainnet.helius-rpc.com, free tier).
+    Migrated from public Solana RPC due to rate limiting on Render.
+    Uses getAccountInfo, getSignaturesForAddress, getBlock, getEpochInfo,
+    and getBlockTime JSON-RPC methods.
+  Two-Phase Scan Architecture:
+    Phase 1 (Count): Fetches up to 3 pages (3000 txs) via
+      getSignaturesForAddress. Sufficient for scoring (>50 = max).
+      If capped, response includes tx_count_capped: true and frontend
+      displays count as "3,000+".
+    Phase 2 (Binary Search for First Exposure Date): If Phase 1 doesn't
+      reach the end of tx history, a binary search across the blockchain's
+      slot range finds the true first transaction. Uses getBlock to sample
+      blocks and getSignaturesForAddress(before: ref_sig) to check if the
+      account had activity before each midpoint. Converges in ~10 iterations.
+      If rate-limited mid-search, assumes account existed (conservative) to
+      avoid getting stuck on the same mid_slot.
   Balance: Lamports from account info, converted to SOL (Ã· 1,000,000,000).
   Price: CoinGecko id "solana".
   Validation: validate_solana_address() with base58 decode + 32-byte check.
@@ -569,14 +585,25 @@ All endpoints return the same JSON response shape:
   - validate_xrp_address(address) â€” regex for r-prefixed base58check
 
 -- ENVIRONMENT VARIABLES --
-  ETHERSCAN_API_KEY=your_key_here
+  ETHERSCAN_API_KEY=your_key_here  (required for Ethereum scans)
+  HELIUS_API_KEY=your_key_here     (required for Solana scans, free at helius.dev)
   ALLOWED_ORIGINS=https://quantumtrace.vercel.app
 
 -- ERROR HANDLING --
   All external API calls wrapped in try/except.
-  Rate limits: asyncio.sleep(0.2) between sequential calls.
+  Rate limits: Short asyncio.sleep() delays between sequential calls.
   On upstream failure, return 503 with clear message.
   Invalid addresses return 400 with format-specific guidance.
+  API keys are sanitized from exception messages before logging to
+  prevent credential leaks in Render server logs.
+
+-- SECURITY --
+  No credentials in source code — all from os.environ.get().
+  .env files are gitignored and never committed.
+  CORS locked to localhost:3000 and quantumtrace.vercel.app.
+  Read-only operations only — no wallet connections, no signing.
+  Input validation on all 4 chains before any API calls.
+  Startup warnings if API keys are missing.
 
 -- CORS CONFIGURATION --
   Allow only https://quantumtrace.vercel.app in production.
@@ -696,7 +723,7 @@ V2 â€” Multi-chain expansion (COMPLETED â€” May 2026):
   âœ“ Dedicated static pages created (/migration-checklist, /methodology, /sources)
   âœ“ Vercel Analytics and Speed Insights deployed via .npmrc configuration
 
-V2.1 – Scoring & credibility refinements (COMPLETED — May 2026):
+V2.1 – Scoring, credibility & Solana overhaul (COMPLETED — May 2026):
   ✔ Replaced INR value brackets with dynamic USD brackets using CoinGecko prices
   ✔ Replaced binary 50-point exposure jump with graduated exposure scoring (0/30/40/45/50)
   ✔ Added Ed25519 vs ECDSA nuance note for Solana scan results
@@ -704,6 +731,16 @@ V2.1 – Scoring & credibility refinements (COMPLETED — May 2026):
   ✔ Complete methodology page rewrite with accurate scoring tables
   ✔ Eliminated all ₹/INR references from codebase (USD only)
   ✔ Chain-Specific Vulnerability Notes section added to methodology
+  ✔ Migrated Solana RPC from public endpoint to Helius (free tier, 10 req/s)
+  ✔ Implemented two-phase Solana scan: Phase 1 count + Phase 2 binary search
+  ✔ Fixed first-exposure date bug for mega-wallets (was showing today's date)
+  ✔ Fixed reached_end false positive when pagination is rate-limited vs genuinely empty
+  ✔ Fixed binary search stuck-loop when rate-limited (now advances conservatively)
+  ✔ Added tx_count_capped field — frontend shows "3,000+" for capped counts
+  ✔ Added HELIUS_API_KEY environment variable with startup warning
+  ✔ Sanitized error logging to prevent API key leaks in server logs
+  ✔ Reduced all artificial delays from 2.5-3s to 0.1-0.2s (Helius headroom)
+  ✔ Security audit: no hardcoded creds, .env gitignored, CORS locked, input validated
 
 V3 â€” Advanced features (NEXT):
   - Batch address scanning (scan up to 10 addresses at once)

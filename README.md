@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![QuantumTrace](https://img.shields.io/badge/QuantumTrace-v2.0-00e5ff?style=for-the-badge&labelColor=06080f)
+![QuantumTrace](https://img.shields.io/badge/QuantumTrace-v2.1-00e5ff?style=for-the-badge&labelColor=06080f)
 ![Chains](https://img.shields.io/badge/Chains-ETH%20%7C%20BTC%20%7C%20SOL%20%7C%20XRP-00e5ff?style=for-the-badge&labelColor=06080f)
 ![Read Only](https://img.shields.io/badge/Read--Only-No%20Wallet%20Needed-00ff88?style=for-the-badge&labelColor=06080f)
 ![License](https://img.shields.io/badge/License-MIT-ffb020?style=for-the-badge&labelColor=06080f)
@@ -21,7 +21,7 @@ QuantumTrace is a free, read-only blockchain forensics tool that scans any Ether
 
 The threat is not hypothetical. In March 2026, Google Quantum AI published a paper estimating that a future quantum machine running Shor's Algorithm could crack a Bitcoin or Ethereum private key in approximately **9 minutes** — well within Bitcoin's 10-minute block time. The Federal Reserve has separately warned that when this capability arrives, all historical transaction privacy collapses permanently.
 
-QuantumTrace makes this threat **personal and measurable**. Paste your wallet address, and within seconds you will know your real exposure status, how long your key has been visible on-chain, the INR and USD value of assets at risk, a risk score from 0 to 100, and a concrete action plan.
+QuantumTrace makes this threat **personal and measurable**. Paste your wallet address, and within seconds you will know your real exposure status, how long your key has been visible on-chain, the USD value of assets at risk, a risk score from 0 to 100, and a concrete action plan.
 
 No wallet connection required. No private keys. No seed phrases. Everything comes from public blockchain data.
 
@@ -45,17 +45,17 @@ QuantumTrace checks whether your address has ever sent a transaction, and if so,
 
 ## Features
 
-QuantumTrace covers four blockchains in v2.0, each with a tab on the hero input showing which wallet apps use that chain so users know exactly which tab to pick.
+QuantumTrace covers four blockchains in v2.1, each with a tab on the hero input showing which wallet apps use that chain so users know exactly which tab to pick.
 
-**Ethereum** uses the Etherscan API to check outgoing transaction history. Public key exposure follows the classic ECDSA mechanic — any wallet that has ever sent a transaction has its key on-chain.
+**Ethereum** uses the Etherscan API with full pagination to check outgoing transaction history. Public key exposure follows the classic ECDSA mechanic — any wallet that has ever sent a transaction has its key on-chain.
 
 **Bitcoin** supports all three address formats: P2PKH (starting with `1`), P2SH (starting with `3`), and Native SegWit P2WPKH (starting with `bc1q`). Uses the Blockchain.info API, no key required.
 
-**Solana** has a unique mechanic: a Solana address *is* the public key (base58-encoded). Any account that has ever appeared in any on-chain transaction has its public key exposed by definition. Uses the public Solana RPC endpoint.
+**Solana** has a unique mechanic: a Solana address *is* the public key (base58-encoded). Any account that has ever appeared in any on-chain transaction has its public key exposed by definition. Uses the Helius RPC endpoint (free tier, 10 req/s) with a two-phase scan: Phase 1 fetches up to 3000 recent transactions for the count, and Phase 2 uses a binary search across blockchain slots to find the true first-exposure date even for mega-wallets with millions of transactions.
 
 **XRP Ledger** uses the account Sequence number to determine exposure. The Sequence starts at 1 when an account is created and increments by 1 per outgoing transaction, so `Sequence - 1` directly gives the outgoing transaction count. Uses the public XRPL cluster, no key required.
 
-Every scan produces a **Risk Score from 0 to 100** built from four weighted factors: whether the key is exposed at all (50 points base), how many years it has been exposed (up to 30 points), the INR value of exposed assets (up to 10 points), and the number of outgoing transactions (up to 10 points).
+Every scan produces a **Risk Score from 0 to 100** built from four weighted factors: whether the key is exposed at all (up to 50 points), how many years it has been exposed (up to 30 points), the USD value of exposed assets (up to 10 points), and the number of outgoing transactions (up to 10 points).
 
 The **Harvest Now, Decrypt Later warning** includes a personalised five-node timeline showing the wallet's actual first exposure date, the August 2024 NIST PQC standards milestone, the current 2026 migration window, the ~2029 CRQC risk window, and the 2030 target for Ethereum's full quantum resistance.
 
@@ -71,9 +71,14 @@ QuantumTrace is built on a deliberately simple, fast stack with zero AI API call
 
 The **frontend** is Next.js 14 with the App Router, styled with Tailwind CSS and shadcn/ui components, deployed on Vercel. The primary font is Outfit (rounded, geometric headings) and JetBrains Mono is used exclusively for raw data values — wallet addresses, scores, balances — to make technical output feel precise and trustworthy.
 
-The **backend** is FastAPI (Python 3.11+), deployed on Render. It handles four separate analysis endpoints, one per chain, each calling the chain's public API, fetching real-time prices from CoinGecko, calculating the risk score, and returning a structured JSON response.
+The **backend** is FastAPI (Python 3.11+), deployed on Render. It handles four separate analysis endpoints, one per chain, each calling the chain's API, fetching real-time prices from CoinGecko, calculating the risk score, and returning a structured JSON response.
 
-The **external APIs** are all free-tier with no payment required. Etherscan API for Ethereum transaction history and balances. Blockchain.info API for Bitcoin. Solana's public mainnet RPC for Solana account data. The XRPL public cluster for XRP. CoinGecko for real-time ETH, BTC, SOL, and XRP prices in both USD and INR.
+The **external APIs** are:
+- **Etherscan API** — Ethereum transaction history and balances (free tier, requires API key)
+- **Blockchain.info API** — Bitcoin transaction data (free, no key required)
+- **Helius RPC** — Solana account data and transaction signatures (free tier, 1M credits/month, 10 req/s)
+- **XRPL Public Cluster** — XRP Ledger account info (free, no key required)
+- **CoinGecko** — Real-time ETH, BTC, SOL, and XRP prices in USD and INR (free, no key required)
 
 ---
 
@@ -111,22 +116,25 @@ quantumtrace/
 
 ### Prerequisites
 
-You will need Node.js 18+ for the frontend and Python 3.11+ for the backend. You will also need a free Etherscan API key from [etherscan.io](https://etherscan.io) — no other API keys are required since the other data sources are public.
+You will need Node.js 18+ for the frontend and Python 3.11+ for the backend. You will also need:
+- A free **Etherscan API key** from [etherscan.io](https://etherscan.io)
+- A free **Helius API key** from [helius.dev](https://helius.dev) (1M credits/month, 10 req/s)
 
 ### Backend Setup
 
 Clone the repository, then navigate into the backend directory and install dependencies.
 
 ```bash
-git clone https://github.com/LakshCoder10/quantumtrace.git
+git clone https://github.com/LakshmisagarBR/quantumtrace.git
 cd quantumtrace/backend
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the backend directory with your Etherscan API key. This file is listed in `.gitignore` and will never be committed.
+Create a `.env` file in the backend directory with your API keys. This file is listed in `.gitignore` and will never be committed.
 
 ```
-ETHERSCAN_API_KEY=your_actual_key_here
+ETHERSCAN_API_KEY=your_etherscan_key_here
+HELIUS_API_KEY=your_helius_key_here
 ```
 
 Start the backend server with the following command. It will run on port 8000 by default.
@@ -166,11 +174,35 @@ The application will be available at `http://localhost:3000`.
 
 The production deployment uses **Vercel for the frontend** and **Render for the backend**. Both platforms detect changes on the main branch and redeploy automatically on every push.
 
-For Render, set the root directory to `backend`, the build command to `pip install -r requirements.txt`, and the start command to `uvicorn main:app --host 0.0.0.0 --port $PORT`. Add `ETHERSCAN_API_KEY` as an environment variable in the Render dashboard before deploying.
+For Render, set the root directory to `backend`, the build command to `pip install -r requirements.txt`, and the start command to `uvicorn main:app --host 0.0.0.0 --port $PORT`. Add these environment variables in the Render dashboard:
+- `ETHERSCAN_API_KEY` — your Etherscan API key
+- `HELIUS_API_KEY` — your Helius API key
 
 For Vercel, set the root directory to `frontend` and add `NEXT_PUBLIC_API_URL` as an environment variable pointing to your Render backend URL (for example, `https://quantumtrace-api.onrender.com`).
 
 After both are deployed, update the `allow_origins` list in `backend/main.py` to include your actual Vercel URL if it differs from the current value.
+
+---
+
+## Solana Scanning Architecture
+
+Solana mega-wallets (like Raydium treasury with millions of transactions) require a specialized two-phase approach to determine the true first-exposure date:
+
+**Phase 1 — Transaction Count** (fast, ~1 second): Fetches up to 3 pages (3,000 transactions) using `getSignaturesForAddress`. This is sufficient for risk scoring since >50 outgoing transactions already maxes the exposure score component. If the count is capped at the pagination limit, the frontend displays it as "3,000+" to indicate the true count is higher.
+
+**Phase 2 — Binary Search for First Exposure** (~5-10 seconds): If Phase 1 doesn't reach the end of the transaction history, a binary search across the blockchain's slot range is triggered. It uses `getBlock` to sample blocks at midpoints and `getSignaturesForAddress` to check if the target account had activity before each midpoint. This converges on the true first transaction slot within ~10 iterations, even for accounts with millions of transactions.
+
+---
+
+## Security
+
+- **No credentials in source code** — all API keys loaded from environment variables via `os.environ.get()`
+- **`.env` files gitignored** — never committed to version control
+- **Error messages sanitized** — API keys are stripped from exception messages before logging
+- **CORS locked** — only `localhost:3000` and `quantumtrace.vercel.app` are allowed origins
+- **Read-only operations** — no wallet connections, no signing, no state mutations
+- **Input validation** — all addresses validated with chain-specific regex and format checks before any API calls
+- **Startup warnings** — missing API keys trigger `RuntimeWarning` at server startup
 
 ---
 
@@ -188,7 +220,7 @@ The intersection — trillions in tokenized assets secured by an algorithm with 
 
 ## Roadmap
 
-Version 2.0 is the current release, covering all four major chains. The planned V3 features include ENS name resolution for Ethereum wallets (resolving `vitalik.eth` to its 0x address client-side via ethers.js), ERC-20 token balance aggregation so the total value at risk includes tokens not just the native asset, loading skeleton states for a more polished scan experience, batch scanning of multiple addresses, and the quantum vulnerability badge integration with PulseBoard.
+Version 2.1 is the current release, covering all four major chains. The planned V3 features include ENS name resolution for Ethereum wallets (resolving `vitalik.eth` to its 0x address client-side via ethers.js), ERC-20 token balance aggregation so the total value at risk includes tokens not just the native asset, loading skeleton states for a more polished scan experience, batch scanning of multiple addresses, and the quantum vulnerability badge integration with PulseBoard.
 
 ---
 
@@ -212,7 +244,7 @@ This project is licensed under the MIT License. See the [LICENSE](./LICENSE) fil
 
 <div align="center">
 
-Built by [Laksh](https://github.com/LakshCoder10) · [quantumtrace.vercel.app](https://quantumtrace.vercel.app)
+Built by [Laksh](https://github.com/LakshmisagarBR) · [quantumtrace.vercel.app](https://quantumtrace.vercel.app)
 
 *Read-only · No wallet connection · Public blockchain data only*
 
