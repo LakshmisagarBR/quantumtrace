@@ -96,6 +96,9 @@ export default function Home() {
             <a href="/methodology" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
               METHODOLOGY
             </a>
+            <a href="/migration-checklist" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
+              MIGRATION CHECKLIST
+            </a>
             <a href="/sources" className="font-mono text-[10px] text-muted hover:text-primary transition-colors no-underline tracking-[1px]">
               SOURCES
             </a>
