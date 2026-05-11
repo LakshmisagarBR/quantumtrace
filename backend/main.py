@@ -66,14 +66,21 @@ app.add_middleware(
 )
 
 ETHERSCAN_API_KEY = os.environ.get("ETHERSCAN_API_KEY", "")
+HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY", "")
 
 @app.on_event("startup")
 async def startup_check():
+    import warnings
     if not ETHERSCAN_API_KEY:
-        import warnings
         warnings.warn(
             "ETHERSCAN_API_KEY is not set. All analysis requests will fail. "
             "Set this environment variable before running in production.",
+            RuntimeWarning
+        )
+    if not HELIUS_API_KEY:
+        warnings.warn(
+            "HELIUS_API_KEY is not set. Solana analysis requests will fail. "
+            "Get a free key at helius.dev and set this environment variable.",
             RuntimeWarning
         )
 
@@ -497,7 +504,7 @@ async def analyze_bitcoin(address: str):
 async def analyze_solana(address: str):
     """
     Analyzes a Solana wallet address for quantum vulnerability.
-    Uses the public Solana RPC endpoint (no API key required).
+    Uses the Helius RPC endpoint (free tier, 10 req/s).
     IMPORTANT: In Solana, the address IS the public key (base58
     encoded). Any account that exists on-chain has its public key
     exposed by definition — no outgoing transaction required.
@@ -515,7 +522,7 @@ async def analyze_solana(address: str):
         # Step 2: Check if the account exists on-chain via Solana RPC
         # If it exists, the public key (= the address) is on-chain
         try:
-            rpc_url = "https://api.mainnet-beta.solana.com"
+            rpc_url = f"https://mainnet.helius-rpc.com/?api-key={HELIUS_API_KEY}"
             account_payload = {
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -548,62 +555,73 @@ async def analyze_solana(address: str):
 
         _debug = {}
         if is_exposed:
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.1)
             try:
                 # ============================================================
-                # PHASE 1: Single page to confirm exposure & get count.
-                # Keep it to ONE getSignaturesForAddress call to conserve
-                # the rate budget for Phase 2's binary search.
+                # PHASE 1: Fetch up to 3 pages (3000 txs) for count.
+                # Helius free tier (10 req/s) gives ample headroom.
                 # ============================================================
                 all_count = 0
                 reached_end = False
+                before_sig = None
 
-                sig_payload = {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "getSignaturesForAddress",
-                    "params": [address, {"limit": 1000}]
-                }
+                for page_idx in range(3):
+                    params: dict = {"limit": 1000}
+                    if before_sig:
+                        params["before"] = before_sig
 
-                page = None
-                for retry in range(3):
-                    sig_response = await client.post(
-                        rpc_url,
-                        json=sig_payload,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    sig_data = sig_response.json()
+                    sig_payload = {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "getSignaturesForAddress",
+                        "params": [address, params]
+                    }
 
-                    if "error" in sig_data:
-                        await asyncio.sleep(1.5 * (2 ** retry))
-                        continue
+                    page = None
+                    for retry in range(3):
+                        sig_response = await client.post(
+                            rpc_url,
+                            json=sig_payload,
+                            headers={"Content-Type": "application/json"}
+                        )
+                        sig_data = sig_response.json()
 
-                    page = sig_data.get("result", [])
-                    break
+                        if "error" in sig_data:
+                            await asyncio.sleep(0.5 * (2 ** retry))
+                            continue
 
-                if page is not None and len(page) > 0:
-                    all_count = len(page)
+                        page = sig_data.get("result", [])
+                        break
+
+                    if page is None:
+                        break  # Retries exhausted
+                    if len(page) == 0:
+                        reached_end = True
+                        break
+
+                    all_count += len(page)
+                    first_exposure_timestamp = page[-1].get("blockTime")
+                    before_sig = page[-1].get("signature")
+
                     if len(page) < 1000:
                         reached_end = True
-                        first_exposure_timestamp = page[-1].get("blockTime")
-                elif page is not None and len(page) == 0:
-                    reached_end = True
+                        break
+
+                    await asyncio.sleep(0.1)
 
                 total_tx_count = all_count
                 outgoing_count = all_count
 
                 # ============================================================
                 # PHASE 2: Binary search for true first tx date.
-                # Uses getBlock (not rate-limited) + ONE getSignaturesForAddress
-                # per iteration with long delays to stay under rate limits.
-                # If rate-limited, we ADVANCE the search (assume account existed
+                # Uses getBlock + getSignaturesForAddress per iteration.
+                # If rate-limited, ADVANCE the search (assume account existed
                 # at that slot) to avoid getting stuck on the same mid_slot.
                 # ============================================================
                 _debug = {"phase1_reached_end": reached_end, "phase1_count": all_count}
                 if not reached_end:
                     try:
-                        # Wait 3s after Phase 1 for rate limit cooldown
-                        await asyncio.sleep(3.0)
+                        await asyncio.sleep(0.2)
 
                         # Get current slot
                         epoch_payload = {"jsonrpc": "2.0", "id": 1, "method": "getEpochInfo"}
@@ -625,10 +643,10 @@ async def analyze_solana(address: str):
                             mid_slot = (low_slot + high_slot) // 2
                             iter_info = {"i": iter_num, "mid": mid_slot}
 
-                            # Step A: getBlock at mid_slot (not rate-limited)
+                            # Step A: getBlock at mid_slot
                             ref_sig = None
                             for attempt in range(5):
-                                await asyncio.sleep(0.3)
+                                await asyncio.sleep(0.1)
                                 block_payload = {
                                     "jsonrpc": "2.0", "id": 1,
                                     "method": "getBlock",
@@ -655,9 +673,8 @@ async def analyze_solana(address: str):
                                 low_slot = mid_slot + 1
                                 continue
 
-                            # Step B: getSignaturesForAddress (rate-limited)
-                            # Wait 2.5s to respect rate limit
-                            await asyncio.sleep(2.5)
+                            # Step B: getSignaturesForAddress
+                            await asyncio.sleep(0.15)
                             check_payload = {
                                 "jsonrpc": "2.0", "id": 1,
                                 "method": "getSignaturesForAddress",
@@ -672,7 +689,7 @@ async def analyze_solana(address: str):
                                 high_slot = mid_slot
                                 iter_info["result"] = "rate_limited_assume_exists"
                                 _debug["iterations"].append(iter_info)
-                                await asyncio.sleep(3.0)
+                                await asyncio.sleep(0.5)
                                 continue
 
                             account_sigs = check_data.get("result", [])
@@ -692,7 +709,7 @@ async def analyze_solana(address: str):
                         if best_oldest_time:
                             first_exposure_timestamp = best_oldest_time
                         elif high_slot < current_slot:
-                            await asyncio.sleep(0.3)
+                            await asyncio.sleep(0.1)
                             bt_payload = {"jsonrpc": "2.0", "id": 1, "method": "getBlockTime", "params": [high_slot]}
                             bt_resp = await client.post(rpc_url, json=bt_payload, headers={"Content-Type": "application/json"})
                             bt_data = bt_resp.json()
@@ -820,8 +837,7 @@ async def analyze_solana(address: str):
             "risk_level": risk_level,
             "recommendation": recommendation,
             "migration_note": "Solana Foundation announced Dilithium (ML-DSA) testnet in December 2025. Mainnet migration timeline is not yet confirmed.",
-            "tokens": [],
-            "_debug": _debug
+            "tokens": []
         }
 
 
