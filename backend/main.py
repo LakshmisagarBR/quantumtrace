@@ -587,7 +587,9 @@ async def analyze_solana(address: str):
                         page = sig_data.get("result", [])
                         break
 
-                    if page is None or len(page) == 0:
+                    if page is None:
+                        break  # Rate-limited — NOT reached end
+                    if len(page) == 0:
                         reached_end = True
                         break
 
