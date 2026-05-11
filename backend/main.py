@@ -552,6 +552,7 @@ async def analyze_solana(address: str):
         exposure_date = None
         exposure_duration = None
         first_exposure_timestamp = None
+        reached_end = False
 
         _debug = {}
         if is_exposed:
@@ -829,6 +830,7 @@ async def analyze_solana(address: str):
             "exposure_duration": exposure_duration,
             "outgoing_tx_count": outgoing_count,
             "total_tx_count": total_tx_count,
+            "tx_count_capped": not reached_end if is_exposed else False,
             "balance": sol_balance,
             "balance_unit": "SOL",
             "total_value_usd": total_value_usd,

@@ -11,6 +11,7 @@ export type ResultType = {
   exposure_duration: string | null;
   outgoing_tx_count: number;
   total_tx_count: number;
+  tx_count_capped?: boolean;
   balance: number;
   balance_unit: string;
   total_value_usd: number;
@@ -229,7 +230,7 @@ export function ResultsDashboard({ result, onReset }: { result: ResultType | nul
         />
         <Card
           title="OUTGOING TRANSACTIONS"
-          value={result.outgoing_tx_count.toString()}
+          value={`${result.outgoing_tx_count.toLocaleString()}${result.tx_count_capped ? '+' : ''}`}
           subValue={isExposed ? "Signature visible in every tx" : "Signature never revealed"}
           color="primary"
         />
@@ -275,7 +276,7 @@ export function ResultsDashboard({ result, onReset }: { result: ResultType | nul
         <div className={`p-4 md:p-5 rounded-xl border-l-[3px] ${isExposed ? 'bg-destructive/10 border-destructive' : 'bg-safe/10 border-safe'}`}>
           <p className="font-mono text-[12px] text-secondary leading-[1.8]">
             {isExposed
-              ? `This wallet was first exposed on ${result.exposure_date} — giving adversaries over ${result.exposure_duration?.split(' ')[0]} to harvest your public key from the blockchain. Combined with $${result.total_value_usd.toLocaleString()} in exposed assets and ${result.outgoing_tx_count} on-chain signatures, this wallet represents a ${result.risk_level.toLowerCase()}-priority migration target. Cryptographically relevant quantum computers are projected to arrive by 2029.`
+              ? `This wallet was first exposed on ${result.exposure_date} — giving adversaries over ${result.exposure_duration?.split(' ')[0]} to harvest your public key from the blockchain. Combined with $${result.total_value_usd.toLocaleString()} in exposed assets and ${result.outgoing_tx_count.toLocaleString()}${result.tx_count_capped ? '+' : ''} on-chain signatures, this wallet represents a ${result.risk_level.toLowerCase()}-priority migration target. Cryptographically relevant quantum computers are projected to arrive by 2029.`
               : `This wallet has never made an outgoing transaction, meaning its public key has never been revealed on the ${chainDisplayName} blockchain. While the wallet balance creates a small residual score, there is no active quantum exposure. Continue to use fresh addresses for any future transactions.`}
           </p>
         </div>
