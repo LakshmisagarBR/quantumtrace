@@ -2,7 +2,6 @@ import os
 import re
 import datetime
 import asyncio
-import json
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dateutil.relativedelta import relativedelta
@@ -89,20 +88,46 @@ async def analyze_address(address: str):
         raise HTTPException(status_code=400, detail="Invalid Ethereum address format. Must be a 42-character hex string starting with 0x.")
 
     try:
-        async with httpx.AsyncClient() as client:
-            # 1. Fetch transaction list from Etherscan (V2 API)
-            tx_url = f"https://api.etherscan.io/v2/api?chainid=1&module=account&action=txlist&address={address}&sort=asc&apikey={ETHERSCAN_API_KEY}"
-            tx_response = await client.get(tx_url)
-            tx_data = tx_response.json()
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            # 1. Paginate Etherscan txlist to fetch ALL transactions
+            # Etherscan V2 supports page/offset for pagination (max offset=10000)
+            all_outgoing_txs = []
+            total_tx_count = 0
+            page_num = 1
+            page_size = 10000
+            max_pages = 10  # Cap at 100k txs to avoid timeout
 
-            # Check if Etherscan returned an error
-            if tx_data.get("status") == "0" and not isinstance(tx_data.get("result"), list):
-                error_msg = tx_data.get("result", "Unknown Etherscan error")
-                if "Invalid API" in str(error_msg) or "Missing" in str(error_msg) or "deprecated" in str(error_msg).lower():
-                    raise HTTPException(status_code=502, detail=f"Etherscan API error: {error_msg}")
-                # "No transactions found" is status 0 but is a valid empty result
-                if "No transactions found" not in str(error_msg):
-                    raise HTTPException(status_code=502, detail=f"Etherscan error: {error_msg}")
+            while page_num <= max_pages:
+                tx_url = (
+                    f"https://api.etherscan.io/v2/api?chainid=1&module=account&action=txlist"
+                    f"&address={address}&sort=asc&page={page_num}&offset={page_size}"
+                    f"&apikey={ETHERSCAN_API_KEY}"
+                )
+                tx_response = await client.get(tx_url)
+                tx_data = tx_response.json()
+
+                # Check if Etherscan returned an error
+                if tx_data.get("status") == "0" and not isinstance(tx_data.get("result"), list):
+                    error_msg = tx_data.get("result", "Unknown Etherscan error")
+                    if "Invalid API" in str(error_msg) or "Missing" in str(error_msg) or "deprecated" in str(error_msg).lower():
+                        raise HTTPException(status_code=502, detail=f"Etherscan API error: {error_msg}")
+                    if "No transactions found" not in str(error_msg):
+                        raise HTTPException(status_code=502, detail=f"Etherscan error: {error_msg}")
+                    break  # No transactions found — stop paging
+
+                page_txs = tx_data.get("result", [])
+                if not isinstance(page_txs, list) or len(page_txs) == 0:
+                    break
+
+                total_tx_count += len(page_txs)
+                outgoing_in_page = [tx for tx in page_txs if tx.get("from", "").lower() == address.lower()]
+                all_outgoing_txs.extend(outgoing_in_page)
+
+                if len(page_txs) < page_size:
+                    break  # Last page
+
+                page_num += 1
+                await asyncio.sleep(0.2)  # Rate-limit between pages
 
             # Small delay to respect rate limit (Etherscan free tier is 5 calls/sec)
             await asyncio.sleep(0.2)
@@ -123,13 +148,8 @@ async def analyze_address(address: str):
             eth_usd = price_data.get("ethereum", {}).get("usd", 3500)
             eth_inr = price_data.get("ethereum", {}).get("inr", 290000)
 
-            # Process outgoing transactions
-            tx_list = tx_data.get("result", [])
-            if not isinstance(tx_list, list):
-                tx_list = []
-                
-            outgoing_txs = [tx for tx in tx_list if tx.get("from", "").lower() == address.lower()]
-            outgoing_count = len(outgoing_txs)
+            # Process outgoing transactions (already collected via pagination)
+            outgoing_count = len(all_outgoing_txs)
             
             is_exposed = outgoing_count > 0
             exposure_date = None
@@ -139,7 +159,7 @@ async def analyze_address(address: str):
 
             if is_exposed:
                 # First outgoing tx timestamp
-                first_exposure_timestamp = int(outgoing_txs[0].get("timeStamp", 0))
+                first_exposure_timestamp = int(all_outgoing_txs[0].get("timeStamp", 0))
                 dt = datetime.datetime.fromtimestamp(first_exposure_timestamp)
                 exposure_date = dt.strftime("%b %d, %Y")
                 
@@ -232,7 +252,7 @@ async def analyze_address(address: str):
                 "exposure_date": exposure_date,
                 "exposure_duration": exposure_duration,
                 "outgoing_tx_count": outgoing_count,
-                "total_tx_count": len(tx_list),
+                "total_tx_count": total_tx_count,
                 "eth_balance": eth_balance,
                 "balance": eth_balance,
                 "balance_unit": "ETH",
@@ -265,12 +285,14 @@ async def analyze_bitcoin(address: str):
             detail="Invalid Bitcoin address. Must be a P2PKH (starts with 1), P2SH (starts with 3), or P2WPKH (starts with bc1q) address."
         )
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=20.0) as client:
 
         # Step 2: Fetch transaction history from Blockchain.info
-        # This API is free, no key required, and returns full tx history
+        # Paginate using offset to get ALL transactions (not just first 50)
+        # The rawaddr API returns newest-first; n_tx gives the total count
         try:
-            tx_url = f"https://blockchain.info/rawaddr/{address}?limit=50"
+            # First call to get n_tx (total count) and first batch
+            tx_url = f"https://blockchain.info/rawaddr/{address}?limit=100&offset=0"
             tx_response = await client.get(tx_url)
             tx_data = tx_response.json()
         except Exception as e:
@@ -279,11 +301,11 @@ async def analyze_bitcoin(address: str):
                 detail="Could not reach Bitcoin blockchain data provider. Please try again shortly."
             )
 
-        # Step 3: Determine exposure status
+        # Step 3: Determine exposure status by paginating ALL transactions
         # For Bitcoin, any outgoing transaction (where this address
         # is in the inputs) reveals the public key via scriptSig
         total_tx_count = tx_data.get("n_tx", 0)
-        transactions = tx_data.get("txs", [])
+        btc_balance_satoshis = tx_data.get("final_balance", 0)  # Grab balance from first response
 
         is_exposed = False
         exposure_date = None
@@ -291,15 +313,57 @@ async def analyze_bitcoin(address: str):
         outgoing_count = 0
         first_exposure_timestamp = None
 
-        for tx in reversed(transactions):  # reversed = oldest first
+        # Process first batch
+        transactions = tx_data.get("txs", [])
+        for tx in transactions:
             inputs = tx.get("inputs", [])
             for inp in inputs:
                 prev_out = inp.get("prev_out", {})
                 if prev_out.get("addr") == address:
                     outgoing_count += 1
-                    if not is_exposed:
-                        is_exposed = True
-                        first_exposure_timestamp = tx.get("time")
+                    # Track the oldest (largest time value will be overwritten
+                    # by older ones as we paginate to earlier txs)
+                    tx_time = tx.get("time")
+                    if tx_time:
+                        if not is_exposed:
+                            is_exposed = True
+                        # Always update — since we're going newest→oldest,
+                        # the last one we see will be the oldest
+                        first_exposure_timestamp = tx_time
+
+        # Paginate remaining pages if there are more txs
+        fetched = len(transactions)
+        page_size = 100
+        max_pages = 50  # Cap at 5000 txs to avoid timeout
+
+        page = 1
+        while fetched < total_tx_count and page < max_pages:
+            await asyncio.sleep(0.3)  # Rate-limit — Blockchain.info has no key
+            try:
+                offset_url = f"https://blockchain.info/rawaddr/{address}?limit={page_size}&offset={fetched}"
+                offset_response = await client.get(offset_url)
+                offset_data = offset_response.json()
+                page_txs = offset_data.get("txs", [])
+            except Exception:
+                break  # Stop paging on error, use what we have
+
+            if not page_txs:
+                break
+
+            for tx in page_txs:
+                inputs = tx.get("inputs", [])
+                for inp in inputs:
+                    prev_out = inp.get("prev_out", {})
+                    if prev_out.get("addr") == address:
+                        outgoing_count += 1
+                        tx_time = tx.get("time")
+                        if tx_time:
+                            if not is_exposed:
+                                is_exposed = True
+                            first_exposure_timestamp = tx_time
+
+            fetched += len(page_txs)
+            page += 1
 
         # Step 4: Calculate exposure duration if exposed
         if is_exposed and first_exposure_timestamp:
@@ -313,10 +377,8 @@ async def analyze_bitcoin(address: str):
         else:
             delta = None
 
-        # Step 5: Fetch BTC balance from Blockchain.info
-        # The balance is included in the rawaddr response in satoshis
+        # Step 5: Convert BTC balance (already fetched from first rawaddr response)
         # 1 BTC = 100,000,000 satoshis
-        btc_balance_satoshis = tx_data.get("final_balance", 0)
         btc_balance = btc_balance_satoshis / 100_000_000
 
         # Step 6: Fetch real BTC price from CoinGecko
@@ -475,27 +537,51 @@ async def analyze_solana(address: str):
         if is_exposed:
             await asyncio.sleep(0.2)
             try:
-                # Get recent transaction signatures (up to 1000)
-                sig_payload = {
-                    "jsonrpc": "2.0",
-                    "id": 1,
-                    "method": "getSignaturesForAddress",
-                    "params": [address, {"limit": 1000}]
-                }
-                sig_response = await client.post(
-                    rpc_url,
-                    json=sig_payload,
-                    headers={"Content-Type": "application/json"}
-                )
-                sig_data = sig_response.json()
-                signatures = sig_data.get("result", [])
-                total_tx_count = len(signatures)
-                outgoing_count = total_tx_count  # All txs expose key in Solana
+                # Paginate getSignaturesForAddress to find the true oldest tx.
+                # Results come newest-first; we walk backwards using `before`
+                # until we exhaust all pages (max 10 pages to cap latency).
+                all_count = 0
+                oldest_block_time = None
+                before_sig = None
+                max_pages = 10
 
-                # Get the earliest transaction (last in the list, which is sorted newest first)
-                if signatures:
-                    oldest_sig = signatures[-1]
-                    first_exposure_timestamp = oldest_sig.get("blockTime")
+                for _ in range(max_pages):
+                    params: dict = {"limit": 1000}
+                    if before_sig:
+                        params["before"] = before_sig
+
+                    sig_payload = {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "getSignaturesForAddress",
+                        "params": [address, params]
+                    }
+                    sig_response = await client.post(
+                        rpc_url,
+                        json=sig_payload,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    sig_data = sig_response.json()
+                    page = sig_data.get("result", [])
+
+                    if not page:
+                        break  # No more signatures
+
+                    all_count += len(page)
+
+                    # The last item in this page is the oldest so far
+                    oldest_block_time = page[-1].get("blockTime")
+                    before_sig = page[-1].get("signature")
+
+                    # If we got fewer than 1000, this is the final page
+                    if len(page) < 1000:
+                        break
+
+                    await asyncio.sleep(0.2)  # Rate-limit between pages
+
+                total_tx_count = all_count
+                outgoing_count = all_count  # All txs expose key in Solana
+                first_exposure_timestamp = oldest_block_time
             except Exception:
                 pass
 
