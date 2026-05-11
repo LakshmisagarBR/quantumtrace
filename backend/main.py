@@ -510,7 +510,7 @@ async def analyze_solana(address: str):
             detail="Invalid Solana address. Must be a 32-44 character base58-encoded public key."
         )
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
 
         # Step 2: Check if the account exists on-chain via Solana RPC
         # If it exists, the public key (= the address) is on-chain
@@ -549,17 +549,17 @@ async def analyze_solana(address: str):
         if is_exposed:
             await asyncio.sleep(0.3)
             try:
-                # Paginate getSignaturesForAddress to find the true oldest tx.
-                # Results come newest-first; we walk backwards using `before`
-                # until we exhaust all pages.
-                # IMPORTANT: Check for RPC error responses (rate limits) and
-                # retry with backoff instead of treating errors as empty pages.
+                # ============================================================
+                # PHASE 1: Fast pagination for count (3 pages max).
+                # For scoring, >50 txs = max exposure score, so exact count
+                # beyond that doesn't affect the risk calculation.
+                # ============================================================
                 all_count = 0
                 oldest_block_time = None
                 before_sig = None
-                max_pages = 25  # Up to 25k txs
+                reached_end = False
 
-                for page_idx in range(max_pages):
+                for page_idx in range(3):
                     params: dict = {"limit": 1000}
                     if before_sig:
                         params["before"] = before_sig
@@ -571,7 +571,6 @@ async def analyze_solana(address: str):
                         "params": [address, params]
                     }
 
-                    # Retry with exponential backoff on RPC errors/rate limits
                     page = None
                     for retry in range(3):
                         sig_response = await client.post(
@@ -581,34 +580,119 @@ async def analyze_solana(address: str):
                         )
                         sig_data = sig_response.json()
 
-                        # Check for RPC-level errors (rate limits, server errors)
                         if "error" in sig_data:
-                            # Exponential backoff: 1s, 2s, 4s
                             await asyncio.sleep(1.0 * (2 ** retry))
                             continue
 
                         page = sig_data.get("result", [])
-                        break  # Success
+                        break
 
                     if page is None or len(page) == 0:
-                        break  # Exhausted retries or genuinely no more sigs
+                        reached_end = True
+                        break
 
                     all_count += len(page)
-
-                    # The last item in this page is the oldest so far
                     oldest_block_time = page[-1].get("blockTime")
                     before_sig = page[-1].get("signature")
 
-                    # If we got fewer than 1000, this is the final page
                     if len(page) < 1000:
+                        reached_end = True
                         break
 
-                    # Rate-limit between pages (0.5s for public RPC)
                     await asyncio.sleep(0.5)
 
                 total_tx_count = all_count
-                outgoing_count = all_count  # All txs expose key in Solana
+                outgoing_count = all_count
                 first_exposure_timestamp = oldest_block_time
+
+                # ============================================================
+                # PHASE 2: Binary search for true first tx date.
+                # If pagination didn't reach the end, the oldest_block_time
+                # is NOT the true first tx — it's just the Nth most recent.
+                # Use a binary search on slot ranges: get a block at a mid
+                # slot, grab a reference sig from it, then check if target
+                # account has any sigs before that reference.
+                # This finds the first tx in ~10 RPC calls instead of 1000+.
+                # ============================================================
+                if not reached_end:
+                    # Get current slot for the upper bound
+                    epoch_payload = {"jsonrpc": "2.0", "id": 1, "method": "getEpochInfo"}
+                    epoch_resp = await client.post(rpc_url, json=epoch_payload, headers={"Content-Type": "application/json"})
+                    epoch_data = epoch_resp.json()
+                    current_slot = epoch_data.get("result", {}).get("absoluteSlot", 0)
+
+                    low_slot = 0
+                    high_slot = current_slot
+                    best_oldest_time = None
+
+                    # Binary search: ~15 iterations covers the full slot range
+                    for _ in range(15):
+                        if high_slot - low_slot < 500_000:  # ~2.5 days precision
+                            break
+
+                        mid_slot = (low_slot + high_slot) // 2
+                        await asyncio.sleep(0.8)
+
+                        # Get a block near mid_slot to find a reference signature
+                        block_payload = {
+                            "jsonrpc": "2.0", "id": 1,
+                            "method": "getBlock",
+                            "params": [mid_slot, {
+                                "encoding": "json",
+                                "transactionDetails": "signatures",
+                                "maxSupportedTransactionVersion": 0
+                            }]
+                        }
+                        block_resp = await client.post(rpc_url, json=block_payload, headers={"Content-Type": "application/json"})
+                        block_data = block_resp.json()
+
+                        if "error" in block_data:
+                            # Slot was skipped or unavailable — nudge forward
+                            low_slot = mid_slot + 1
+                            continue
+
+                        block = block_data.get("result")
+                        if not block or not block.get("signatures"):
+                            low_slot = mid_slot + 1
+                            continue
+
+                        ref_sig = block["signatures"][-1]
+                        await asyncio.sleep(0.8)
+
+                        # Check if target account has sigs BEFORE this reference
+                        check_payload = {
+                            "jsonrpc": "2.0", "id": 1,
+                            "method": "getSignaturesForAddress",
+                            "params": [address, {"limit": 1, "before": ref_sig}]
+                        }
+                        check_resp = await client.post(rpc_url, json=check_payload, headers={"Content-Type": "application/json"})
+                        check_data = check_resp.json()
+
+                        if "error" in check_data:
+                            await asyncio.sleep(2)
+                            continue
+
+                        account_sigs = check_data.get("result", [])
+                        if account_sigs:
+                            # Account has activity before mid_slot — go older
+                            high_slot = mid_slot
+                            best_oldest_time = account_sigs[0].get("blockTime")
+                        else:
+                            # No activity before mid_slot — first tx is after this
+                            low_slot = mid_slot + 1
+
+                    # Use the binary search result if we found one
+                    if best_oldest_time:
+                        first_exposure_timestamp = best_oldest_time
+                    elif high_slot < current_slot:
+                        # Get the block time at the narrowed-down slot
+                        await asyncio.sleep(0.5)
+                        bt_payload = {"jsonrpc": "2.0", "id": 1, "method": "getBlockTime", "params": [high_slot]}
+                        bt_resp = await client.post(rpc_url, json=bt_payload, headers={"Content-Type": "application/json"})
+                        bt_data = bt_resp.json()
+                        if bt_data.get("result"):
+                            first_exposure_timestamp = bt_data["result"]
+
             except Exception:
                 pass
 
