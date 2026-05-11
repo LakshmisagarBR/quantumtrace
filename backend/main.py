@@ -551,79 +551,61 @@ async def analyze_solana(address: str):
             await asyncio.sleep(0.3)
             try:
                 # ============================================================
-                # PHASE 1: Fast pagination for count (3 pages max).
-                # For scoring, >50 txs = max exposure score, so exact count
-                # beyond that doesn't affect the risk calculation.
+                # PHASE 1: Single page to confirm exposure & get count.
+                # Keep it to ONE getSignaturesForAddress call to conserve
+                # the rate budget for Phase 2's binary search.
                 # ============================================================
                 all_count = 0
-                oldest_block_time = None
-                before_sig = None
                 reached_end = False
 
-                for page_idx in range(3):
-                    params: dict = {"limit": 1000}
-                    if before_sig:
-                        params["before"] = before_sig
+                sig_payload = {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "getSignaturesForAddress",
+                    "params": [address, {"limit": 1000}]
+                }
 
-                    sig_payload = {
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "getSignaturesForAddress",
-                        "params": [address, params]
-                    }
+                page = None
+                for retry in range(3):
+                    sig_response = await client.post(
+                        rpc_url,
+                        json=sig_payload,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    sig_data = sig_response.json()
 
-                    page = None
-                    for retry in range(3):
-                        sig_response = await client.post(
-                            rpc_url,
-                            json=sig_payload,
-                            headers={"Content-Type": "application/json"}
-                        )
-                        sig_data = sig_response.json()
+                    if "error" in sig_data:
+                        await asyncio.sleep(1.5 * (2 ** retry))
+                        continue
 
-                        if "error" in sig_data:
-                            await asyncio.sleep(1.0 * (2 ** retry))
-                            continue
+                    page = sig_data.get("result", [])
+                    break
 
-                        page = sig_data.get("result", [])
-                        break
-
-                    if page is None:
-                        break  # Rate-limited — NOT reached end
-                    if len(page) == 0:
-                        reached_end = True
-                        break
-
-                    all_count += len(page)
-                    oldest_block_time = page[-1].get("blockTime")
-                    before_sig = page[-1].get("signature")
-
+                if page is not None and len(page) > 0:
+                    all_count = len(page)
                     if len(page) < 1000:
                         reached_end = True
-                        break
-
-                    await asyncio.sleep(0.5)
+                        first_exposure_timestamp = page[-1].get("blockTime")
+                elif page is not None and len(page) == 0:
+                    reached_end = True
 
                 total_tx_count = all_count
                 outgoing_count = all_count
 
-                # If pagination reached the end, use the last page's date
-                if reached_end:
-                    first_exposure_timestamp = oldest_block_time
-
                 # ============================================================
                 # PHASE 2: Binary search for true first tx date.
-                # If pagination didn't reach the end, the oldest_block_time
-                # is NOT the true first tx — it's just the Nth most recent.
-                # Use a binary search on slot ranges: get a block at a mid
-                # slot, grab a reference sig from it, then check if target
-                # account has any sigs before that reference.
-                # Optimized: ~12 iterations × ~1.2s each ≈ 15s total.
+                # Uses getBlock (not rate-limited) + ONE getSignaturesForAddress
+                # per iteration with long delays to stay under rate limits.
+                # If rate-limited, we ADVANCE the search (assume account existed
+                # at that slot) to avoid getting stuck on the same mid_slot.
                 # ============================================================
                 _debug = {"phase1_reached_end": reached_end, "phase1_count": all_count}
                 if not reached_end:
                     try:
-                        # Get current slot for the upper bound
+                        # Wait 3s after Phase 1 for rate limit cooldown
+                        await asyncio.sleep(3.0)
+
+                        # Get current slot
                         epoch_payload = {"jsonrpc": "2.0", "id": 1, "method": "getEpochInfo"}
                         epoch_resp = await client.post(rpc_url, json=epoch_payload, headers={"Content-Type": "application/json"})
                         epoch_data = epoch_resp.json()
@@ -635,23 +617,22 @@ async def analyze_solana(address: str):
                         _debug["current_slot"] = current_slot
                         _debug["iterations"] = []
 
-                        # Binary search: 12 iterations, ~1M slot precision (~5 days)
-                        for iter_num in range(12):
-                            if high_slot - low_slot < 1_000_000:
+                        for iter_num in range(10):
+                            if high_slot - low_slot < 2_000_000:
                                 _debug["converged"] = True
                                 break
 
                             mid_slot = (low_slot + high_slot) // 2
                             iter_info = {"i": iter_num, "mid": mid_slot}
 
-                            # Get a block at mid_slot to find a reference signature
+                            # Step A: getBlock at mid_slot (not rate-limited)
                             ref_sig = None
-                            for attempt in range(3):
-                                await asyncio.sleep(0.4)
+                            for attempt in range(5):
+                                await asyncio.sleep(0.3)
                                 block_payload = {
                                     "jsonrpc": "2.0", "id": 1,
                                     "method": "getBlock",
-                                    "params": [mid_slot + attempt * 10, {
+                                    "params": [mid_slot + attempt * 100, {
                                         "encoding": "json",
                                         "transactionDetails": "signatures",
                                         "maxSupportedTransactionVersion": 0
@@ -661,18 +642,11 @@ async def analyze_solana(address: str):
                                 block_data = block_resp.json()
 
                                 if "error" in block_data:
-                                    err_code = block_data["error"].get("code", 0)
-                                    err_msg = block_data["error"].get("message", "")
-                                    iter_info[f"block_err_{attempt}"] = f"{err_code}:{err_msg[:60]}"
-                                    if err_code == 429:
-                                        await asyncio.sleep(1.5)
-                                        continue
                                     continue
 
                                 block = block_data.get("result")
                                 if block and block.get("signatures"):
                                     ref_sig = block["signatures"][-1]
-                                    iter_info["got_ref"] = True
                                     break
 
                             if not ref_sig:
@@ -681,35 +655,31 @@ async def analyze_solana(address: str):
                                 low_slot = mid_slot + 1
                                 continue
 
-                            # Check if target account has sigs BEFORE this reference
-                            account_sigs = None
-                            for attempt in range(2):
-                                await asyncio.sleep(0.4)
-                                check_payload = {
-                                    "jsonrpc": "2.0", "id": 1,
-                                    "method": "getSignaturesForAddress",
-                                    "params": [address, {"limit": 1, "before": ref_sig}]
-                                }
-                                check_resp = await client.post(rpc_url, json=check_payload, headers={"Content-Type": "application/json"})
-                                check_data = check_resp.json()
+                            # Step B: getSignaturesForAddress (rate-limited)
+                            # Wait 2.5s to respect rate limit
+                            await asyncio.sleep(2.5)
+                            check_payload = {
+                                "jsonrpc": "2.0", "id": 1,
+                                "method": "getSignaturesForAddress",
+                                "params": [address, {"limit": 1, "before": ref_sig}]
+                            }
+                            check_resp = await client.post(rpc_url, json=check_payload, headers={"Content-Type": "application/json"})
+                            check_data = check_resp.json()
 
-                                if "error" in check_data:
-                                    iter_info[f"sig_err_{attempt}"] = str(check_data["error"])[:80]
-                                    await asyncio.sleep(1.5)
-                                    continue
-
-                                account_sigs = check_data.get("result", [])
-                                break
-
-                            if account_sigs is None:
-                                iter_info["result"] = "rate_limited"
+                            if "error" in check_data:
+                                # Rate-limited: assume account existed here
+                                # (conservative — advances search to older slots)
+                                high_slot = mid_slot
+                                iter_info["result"] = "rate_limited_assume_exists"
                                 _debug["iterations"].append(iter_info)
+                                await asyncio.sleep(3.0)
                                 continue
 
+                            account_sigs = check_data.get("result", [])
                             if account_sigs:
                                 high_slot = mid_slot
                                 best_oldest_time = account_sigs[0].get("blockTime")
-                                iter_info["result"] = f"found_before:{best_oldest_time}"
+                                iter_info["result"] = f"found:{best_oldest_time}"
                             else:
                                 low_slot = mid_slot + 1
                                 iter_info["result"] = "not_found"
@@ -719,7 +689,6 @@ async def analyze_solana(address: str):
                         _debug["best_oldest_time"] = best_oldest_time
                         _debug["final_range"] = f"{low_slot}-{high_slot}"
 
-                        # Use the binary search result if we found one
                         if best_oldest_time:
                             first_exposure_timestamp = best_oldest_time
                         elif high_slot < current_slot:
@@ -731,7 +700,7 @@ async def analyze_solana(address: str):
                                 first_exposure_timestamp = bt_data["result"]
                     except Exception as e:
                         _debug["phase2_error"] = f"{type(e).__name__}: {str(e)}"
-                        print(f"[SOLANA] Phase 2 binary search error: {type(e).__name__}: {e}")
+                        print(f"[SOLANA] Phase 2 error: {type(e).__name__}: {e}")
                 else:
                     _debug["phase2"] = "skipped_reached_end"
 
