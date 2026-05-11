@@ -612,7 +612,7 @@ async def analyze_solana(address: str):
                 # Use a binary search on slot ranges: get a block at a mid
                 # slot, grab a reference sig from it, then check if target
                 # account has any sigs before that reference.
-                # This finds the first tx in ~10 RPC calls instead of 1000+.
+                # Optimized: ~12 iterations × ~1.2s each ≈ 15s total.
                 # ============================================================
                 if not reached_end:
                     # Get current slot for the upper bound
@@ -625,54 +625,70 @@ async def analyze_solana(address: str):
                     high_slot = current_slot
                     best_oldest_time = None
 
-                    # Binary search: ~15 iterations covers the full slot range
-                    for _ in range(15):
-                        if high_slot - low_slot < 500_000:  # ~2.5 days precision
+                    # Binary search: 12 iterations, ~1M slot precision (~5 days)
+                    for _ in range(12):
+                        if high_slot - low_slot < 1_000_000:
                             break
 
                         mid_slot = (low_slot + high_slot) // 2
-                        await asyncio.sleep(0.8)
 
-                        # Get a block near mid_slot to find a reference signature
-                        block_payload = {
-                            "jsonrpc": "2.0", "id": 1,
-                            "method": "getBlock",
-                            "params": [mid_slot, {
-                                "encoding": "json",
-                                "transactionDetails": "signatures",
-                                "maxSupportedTransactionVersion": 0
-                            }]
-                        }
-                        block_resp = await client.post(rpc_url, json=block_payload, headers={"Content-Type": "application/json"})
-                        block_data = block_resp.json()
+                        # Get a block at mid_slot to find a reference signature
+                        # Retry up to 3 times on rate limit or skipped slot
+                        ref_sig = None
+                        for attempt in range(3):
+                            await asyncio.sleep(0.4)
+                            block_payload = {
+                                "jsonrpc": "2.0", "id": 1,
+                                "method": "getBlock",
+                                "params": [mid_slot + attempt * 10, {
+                                    "encoding": "json",
+                                    "transactionDetails": "signatures",
+                                    "maxSupportedTransactionVersion": 0
+                                }]
+                            }
+                            block_resp = await client.post(rpc_url, json=block_payload, headers={"Content-Type": "application/json"})
+                            block_data = block_resp.json()
 
-                        if "error" in block_data:
-                            # Slot was skipped or unavailable — nudge forward
+                            if "error" in block_data:
+                                err_code = block_data["error"].get("code", 0)
+                                if err_code == 429:
+                                    await asyncio.sleep(1.5)
+                                    continue
+                                # Slot skipped — try nearby slot
+                                continue
+
+                            block = block_data.get("result")
+                            if block and block.get("signatures"):
+                                ref_sig = block["signatures"][-1]
+                                break
+
+                        if not ref_sig:
+                            # Couldn't get a block here — skip to upper half
                             low_slot = mid_slot + 1
                             continue
-
-                        block = block_data.get("result")
-                        if not block or not block.get("signatures"):
-                            low_slot = mid_slot + 1
-                            continue
-
-                        ref_sig = block["signatures"][-1]
-                        await asyncio.sleep(0.8)
 
                         # Check if target account has sigs BEFORE this reference
-                        check_payload = {
-                            "jsonrpc": "2.0", "id": 1,
-                            "method": "getSignaturesForAddress",
-                            "params": [address, {"limit": 1, "before": ref_sig}]
-                        }
-                        check_resp = await client.post(rpc_url, json=check_payload, headers={"Content-Type": "application/json"})
-                        check_data = check_resp.json()
+                        account_sigs = None
+                        for attempt in range(2):
+                            await asyncio.sleep(0.4)
+                            check_payload = {
+                                "jsonrpc": "2.0", "id": 1,
+                                "method": "getSignaturesForAddress",
+                                "params": [address, {"limit": 1, "before": ref_sig}]
+                            }
+                            check_resp = await client.post(rpc_url, json=check_payload, headers={"Content-Type": "application/json"})
+                            check_data = check_resp.json()
 
-                        if "error" in check_data:
-                            await asyncio.sleep(2)
-                            continue
+                            if "error" in check_data:
+                                await asyncio.sleep(1.5)
+                                continue
 
-                        account_sigs = check_data.get("result", [])
+                            account_sigs = check_data.get("result", [])
+                            break
+
+                        if account_sigs is None:
+                            continue  # Rate limited — skip this iteration
+
                         if account_sigs:
                             # Account has activity before mid_slot — go older
                             high_slot = mid_slot
@@ -686,7 +702,7 @@ async def analyze_solana(address: str):
                         first_exposure_timestamp = best_oldest_time
                     elif high_slot < current_slot:
                         # Get the block time at the narrowed-down slot
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.3)
                         bt_payload = {"jsonrpc": "2.0", "id": 1, "method": "getBlockTime", "params": [high_slot]}
                         bt_resp = await client.post(rpc_url, json=bt_payload, headers={"Content-Type": "application/json"})
                         bt_data = bt_resp.json()
