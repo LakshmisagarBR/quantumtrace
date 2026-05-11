@@ -546,6 +546,7 @@ async def analyze_solana(address: str):
         exposure_duration = None
         first_exposure_timestamp = None
 
+        _debug = {}
         if is_exposed:
             await asyncio.sleep(0.3)
             try:
@@ -619,6 +620,7 @@ async def analyze_solana(address: str):
                 # account has any sigs before that reference.
                 # Optimized: ~12 iterations × ~1.2s each ≈ 15s total.
                 # ============================================================
+                _debug = {"phase1_reached_end": reached_end, "phase1_count": all_count}
                 if not reached_end:
                     try:
                         # Get current slot for the upper bound
@@ -630,16 +632,19 @@ async def analyze_solana(address: str):
                         low_slot = 0
                         high_slot = current_slot
                         best_oldest_time = None
+                        _debug["current_slot"] = current_slot
+                        _debug["iterations"] = []
 
                         # Binary search: 12 iterations, ~1M slot precision (~5 days)
-                        for _ in range(12):
+                        for iter_num in range(12):
                             if high_slot - low_slot < 1_000_000:
+                                _debug["converged"] = True
                                 break
 
                             mid_slot = (low_slot + high_slot) // 2
+                            iter_info = {"i": iter_num, "mid": mid_slot}
 
                             # Get a block at mid_slot to find a reference signature
-                            # Retry up to 3 times on rate limit or skipped slot
                             ref_sig = None
                             for attempt in range(3):
                                 await asyncio.sleep(0.4)
@@ -657,19 +662,22 @@ async def analyze_solana(address: str):
 
                                 if "error" in block_data:
                                     err_code = block_data["error"].get("code", 0)
+                                    err_msg = block_data["error"].get("message", "")
+                                    iter_info[f"block_err_{attempt}"] = f"{err_code}:{err_msg[:60]}"
                                     if err_code == 429:
                                         await asyncio.sleep(1.5)
                                         continue
-                                    # Slot skipped — try nearby slot
                                     continue
 
                                 block = block_data.get("result")
                                 if block and block.get("signatures"):
                                     ref_sig = block["signatures"][-1]
+                                    iter_info["got_ref"] = True
                                     break
 
                             if not ref_sig:
-                                # Couldn't get a block here — skip to upper half
+                                iter_info["result"] = "no_ref_sig"
+                                _debug["iterations"].append(iter_info)
                                 low_slot = mid_slot + 1
                                 continue
 
@@ -686,6 +694,7 @@ async def analyze_solana(address: str):
                                 check_data = check_resp.json()
 
                                 if "error" in check_data:
+                                    iter_info[f"sig_err_{attempt}"] = str(check_data["error"])[:80]
                                     await asyncio.sleep(1.5)
                                     continue
 
@@ -693,21 +702,27 @@ async def analyze_solana(address: str):
                                 break
 
                             if account_sigs is None:
-                                continue  # Rate limited — skip this iteration
+                                iter_info["result"] = "rate_limited"
+                                _debug["iterations"].append(iter_info)
+                                continue
 
                             if account_sigs:
-                                # Account has activity before mid_slot — go older
                                 high_slot = mid_slot
                                 best_oldest_time = account_sigs[0].get("blockTime")
+                                iter_info["result"] = f"found_before:{best_oldest_time}"
                             else:
-                                # No activity before mid_slot — first tx is after this
                                 low_slot = mid_slot + 1
+                                iter_info["result"] = "not_found"
+
+                            _debug["iterations"].append(iter_info)
+
+                        _debug["best_oldest_time"] = best_oldest_time
+                        _debug["final_range"] = f"{low_slot}-{high_slot}"
 
                         # Use the binary search result if we found one
                         if best_oldest_time:
                             first_exposure_timestamp = best_oldest_time
                         elif high_slot < current_slot:
-                            # Get the block time at the narrowed-down slot
                             await asyncio.sleep(0.3)
                             bt_payload = {"jsonrpc": "2.0", "id": 1, "method": "getBlockTime", "params": [high_slot]}
                             bt_resp = await client.post(rpc_url, json=bt_payload, headers={"Content-Type": "application/json"})
@@ -715,8 +730,10 @@ async def analyze_solana(address: str):
                             if bt_data.get("result"):
                                 first_exposure_timestamp = bt_data["result"]
                     except Exception as e:
-                        # Binary search failed — first_exposure_timestamp stays None
-                        pass
+                        _debug["phase2_error"] = f"{type(e).__name__}: {str(e)}"
+                        print(f"[SOLANA] Phase 2 binary search error: {type(e).__name__}: {e}")
+                else:
+                    _debug["phase2"] = "skipped_reached_end"
 
             except Exception:
                 pass
@@ -834,7 +851,8 @@ async def analyze_solana(address: str):
             "risk_level": risk_level,
             "recommendation": recommendation,
             "migration_note": "Solana Foundation announced Dilithium (ML-DSA) testnet in December 2025. Mainnet migration timeline is not yet confirmed.",
-            "tokens": []
+            "tokens": [],
+            "_debug": _debug
         }
 
 
